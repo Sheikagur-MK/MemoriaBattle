@@ -31,7 +31,9 @@ async function connect() {
   }
 }
 connect();
-
+mongoose.connect(process.env.MONGODB_URI)
+  .then(() => console.log("🔥 Conexión real establecida"))
+  .catch(err => console.error("❌ Error crítico de conexión:", err));
 // 3. MODELO DE USUARIO
 const User = mongoose.model('User', new mongoose.Schema({
     username: { type: String, required: true, unique: true },
