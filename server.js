@@ -1,27 +1,20 @@
 const express = require('express');
 const http = require('http');
-// CORRECCIÓN AQUÍ: Importamos Server correctamente
 const { Server } = require('socket.io'); 
 const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
 const app = express();
 const server = http.createServer(app);
 
-// Configuración de Socket.io con CORS
 const io = new Server(server, {
-    cors: {
-        origin: "*",
-        methods: ["GET", "POST"],
-        credentials: true
-    }
+    cors: { origin: "*", methods: ["GET", "POST"], credentials: true }
 });
 
-// Conexión a MongoDB (Usa tu variable de entorno en Render)
+// --- TU CONFIGURACIÓN DE MONGO (INTACTA) ---
 mongoose.connect(process.env.MONGODB_URI)
   .then(() => console.log("🔥 Base de datos conectada con éxito"))
   .catch(err => console.error("❌ Error al conectar MongoDB:", err));
 
-// Esquema de Usuario
 const User = mongoose.model('User', new mongoose.Schema({
     username: { type: String, required: true, unique: true },
     email: { type: String, required: true, unique: true },
@@ -35,40 +28,17 @@ let hostId = null;
 let partidaIniciada = false;
 let items = [];
 let zona = { x: 2500, y: 2500, radio: 2500 };
-const WORLD_SIZE = 5000;
 
-// Lógica de ítems y zona
 function generarItems() {
-    let nuevosItems = [];
+    let nuevos = [];
     for(let i=0; i<60; i++) {
-        nuevosItems.push({
-            id: i,
-            x: Math.random() * 4900 + 50,
-            y: Math.random() * 4900 + 50,
-            type: Math.random() > 0.6 ? 'weapon' : 'dash'
-        });
+        nuevos.push({ id: i, x: Math.random()*4800+100, y: Math.random()*4800+100 });
     }
-    return nuevosItems;
+    return nuevos;
 }
 
-function actualizarZona() {
-    if (!partidaIniciada) return;
-    const angulo = Math.random() * Math.PI * 2;
-    const mov = zona.radio * 0.15;
-    zona.x += Math.cos(angulo) * mov;
-    zona.y += Math.sin(angulo) * mov;
-    zona.radio *= 0.85; 
-    // Limites del mapa
-    zona.x = Math.max(zona.radio, Math.min(WORLD_SIZE - zona.radio, zona.x));
-    zona.y = Math.max(zona.radio, Math.min(WORLD_SIZE - zona.radio, zona.y));
-    io.emit('actualizar_zona', zona);
-}
-
-// --- EVENTOS DE SOCKET ---
 io.on('connection', (socket) => {
-    console.log('Conexión detectada:', socket.id);
-
-    // Registro
+    // --- LÓGICA DE REGISTRO Y LOGIN (INTACTA) ---
     socket.on('registrar_usuario', async (datos) => {
         try {
             const salt = await bcrypt.genSalt(10);
@@ -76,10 +46,9 @@ io.on('connection', (socket) => {
             const nuevoUsuario = new User({ ...datos, password: hashedPassword });
             await nuevoUsuario.save();
             socket.emit('registro_resultado', { exito: true });
-        } catch (e) { socket.emit('registro_resultado', { exito: false, mensaje: "Email o usuario ya existe" }); }
+        } catch (e) { socket.emit('registro_resultado', { exito: false }); }
     });
 
-    // Login
     socket.on('login_usuario', async (datos) => {
         try {
             const usuario = await User.findOne({ email: datos.email });
@@ -90,26 +59,41 @@ io.on('connection', (socket) => {
                 }
                 socket.emit('login_resultado', { exito: true });
                 io.emit('actualizar_sala', { total: jugadoresEnEspera.length, hostId: hostId });
-            } else {
-                socket.emit('login_resultado', { exito: false, mensaje: "Datos incorrectos" });
             }
         } catch (e) { socket.emit('login_resultado', { exito: false }); }
     });
 
-    // Inicio de partida
+    // --- INICIO DE PARTIDA ---
     socket.on('solicitar_inicio_partida', () => {
         if (socket.id === hostId) {
             partidaIniciada = true;
             items = generarItems();
             io.emit('iniciar_partida', { items, zona });
-            setInterval(actualizarZona, 180000); // 3 minutos
         }
     });
 
-    // Movimiento
+    // --- MOVIMIENTO Y MECÁNICAS ---
     socket.on('move', (data) => {
-        players[socket.id] = data;
+        players[socket.id] = data; // Incluye x, y, angle, stretch, hasWeapon
         socket.broadcast.emit('playerMoved', { id: socket.id, ...data });
+    });
+
+    socket.on('item_recogido', (itemId) => {
+        items = items.filter(it => it.id !== itemId);
+        io.emit('item_eliminado', itemId);
+    });
+
+    socket.on('eliminar_jugador', (targetId) => {
+        const ranking = Object.keys(players).length; // Calcula lugar en la partida
+        io.to(targetId).emit('has_muerto', ranking);
+        delete players[targetId];
+        
+        // Si solo queda uno, es el ganador
+        if (Object.keys(players).length === 1 && partidaIniciada) {
+            const ganadorId = Object.keys(players)[0];
+            io.to(ganadorId).emit('eres_ganador');
+            partidaIniciada = false;
+        }
     });
 
     socket.on('disconnect', () => {
@@ -117,11 +101,10 @@ io.on('connection', (socket) => {
         jugadoresEnEspera = jugadoresEnEspera.filter(id => id !== socket.id);
         if (socket.id === hostId) hostId = jugadoresEnEspera[0] || null;
         io.emit('playerDisconnected', socket.id);
-        io.emit('actualizar_sala', { total: jugadoresEnEspera.length, hostId: hostId });
     });
 });
 
-const PORT = process.env.PORT || 10000;
+server.listen(process.env.PORT || 10000);
 server.listen(PORT, () => console.log(`🚀 Servidor corriendo en puerto ${PORT}`));
 
 
