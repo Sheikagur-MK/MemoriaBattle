@@ -7,35 +7,18 @@ const bcrypt = require('bcryptjs');
 const app = express();
 const server = http.createServer(app);
 
-// 1. CONFIGURACIÓN DE CORS MEJORADA (Esto quita los errores rojos de tu consola)
 const io = new Server(server, {
     cors: {
-        origin: "*", // Permite que tu GitHub Pages se conecte sin problemas
+        origin: "*", 
         methods: ["GET", "POST"],
         credentials: true
     }
 });
 
-// Ahora el código es limpio y GitHub no se asustará
-const { MongoClient } = require('mongodb');
-
-const uri = process.env.MONGODB_URI; // Render inyectará esto automáticamente
-const client = new MongoClient(uri);
-
-async function connect() {
-  try {
-    await client.connect();
-    console.log("Conectado exitosamente a MongoDB en Render");
-  } catch (e) {
-    console.error(e);
-  }
-}
-connect();
 mongoose.connect(process.env.MONGODB_URI)
   .then(() => console.log("🔥 Conexión real establecida"))
   .catch(err => console.error("❌ Error crítico de conexión:", err));
 
-// 3. MODELO DE USUARIO
 const User = mongoose.model('User', new mongoose.Schema({
     username: { type: String, required: true, unique: true },
     email: { type: String, required: true, unique: true },
@@ -43,37 +26,65 @@ const User = mongoose.model('User', new mongoose.Schema({
 }));
 
 let players = {};
+let jugadoresEnEspera = []; // Lista de IDs en el lobby
+let hostId = null; // ID del creador de la sala
 
-// 4. BLOQUE DE CONEXIÓN ÚNICO
 io.on('connection', (socket) => {
     console.log('Nuevo jugador conectado:', socket.id);
 
-    // Evento de Registro
+    // Evento de Registro (Sin cambios)
     socket.on('registrar_usuario', async (datos) => {
         try {
-            console.log("Intentando registrar a:", datos.username);
             const salt = await bcrypt.genSalt(10);
             const hashedPassword = await bcrypt.hash(datos.password, salt);
-            
             const nuevoUsuario = new User({
                 username: datos.username,
                 email: datos.email,
                 password: hashedPassword
             });
-
             await nuevoUsuario.save();
             socket.emit('registro_resultado', { exito: true, mensaje: "¡Usuario registrado con éxito!" });
-            console.log("✅ Usuario guardado en MongoDB");
         } catch (error) {
-            console.error("❌ Error en registro:", error);
             socket.emit('registro_resultado', { exito: false, mensaje: "El usuario o correo ya existen." });
         }
     });
 
-    // Lógica básica del juego
-    players[socket.id] = { x: 2500, y: 2500, angle: 0 };
-    io.emit('state', players);
+    // Lógica de Login y Sala de Espera
+    socket.on('login_usuario', async (datos) => {
+        try {
+            const usuario = await User.findOne({ email: datos.email });
+            if (usuario && await bcrypt.compare(datos.password, usuario.password)) {
+                
+                // Si es el primero, se convierte en Host
+                if (jugadoresEnEspera.length === 0) hostId = socket.id;
+                
+                jugadoresEnEspera.push(socket.id);
+                socket.emit('login_resultado', { exito: true, username: usuario.username });
+                
+                // Notificar a todos el estado de la sala
+                io.emit('actualizar_sala', { 
+                    total: jugadoresEnEspera.length, 
+                    hostId: hostId 
+                });
+            } else {
+                socket.emit('login_resultado', { exito: false, mensaje: "Credenciales inválidas." });
+            }
+        } catch (e) {
+            socket.emit('login_resultado', { exito: false, mensaje: "Error en el servidor." });
+        }
+    });
 
+    // Inicio de partida controlado por el Host
+    socket.on('solicitar_inicio_partida', () => {
+        if (socket.id === hostId && jugadoresEnEspera.length >= 2) {
+            io.emit('iniciar_partida');
+            console.log("🎮 Partida iniciada por el Host");
+        }
+    });
+
+    // Lógica del juego (Sin cambios)
+    players[socket.id] = { x: 2500, y: 2500, angle: 0 };
+    
     socket.on('move', (data) => {
         if (players[socket.id]) {
             Object.assign(players[socket.id], data);
@@ -83,11 +94,17 @@ io.on('connection', (socket) => {
 
     socket.on('disconnect', () => {
         delete players[socket.id];
+        jugadoresEnEspera = jugadoresEnEspera.filter(id => id !== socket.id);
+        
+        // Si el host se va, el siguiente toma el control
+        if (socket.id === hostId) {
+            hostId = jugadoresEnEspera.length > 0 ? jugadoresEnEspera[0] : null;
+        }
+
+        io.emit('actualizar_sala', { total: jugadoresEnEspera.length, hostId: hostId });
         io.emit('playerDisconnected', socket.id);
     });
 });
 
 const PORT = process.env.PORT || 10000;
-server.listen(PORT, () => {
-    console.log(`🚀 Servidor funcionando en puerto ${PORT}`);
-});
+server.listen(PORT, () => { console.log(`🚀 Servidor en puerto ${PORT}`); });
