@@ -34,6 +34,7 @@ connect();
 mongoose.connect(process.env.MONGODB_URI)
   .then(() => console.log("🔥 Conexión real establecida"))
   .catch(err => console.error("❌ Error crítico de conexión:", err));
+
 // 3. MODELO DE USUARIO
 const User = mongoose.model('User', new mongoose.Schema({
     username: { type: String, required: true, unique: true },
@@ -87,6 +88,6 @@ io.on('connection', (socket) => {
 });
 
 const PORT = process.env.PORT || 10000;
-server.listen(PORT,'0.0.0.0', () => {
+server.listen(PORT, () => {
     console.log(`🚀 Servidor funcionando en puerto ${PORT}`);
 });
