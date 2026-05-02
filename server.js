@@ -15,63 +15,24 @@ mongoose.connect(process.env.MONGODB_URI)
   .then(() => console.log("🔥 Base de datos conectada con éxito"))
   .catch(err => console.error("❌ Error al conectar MongoDB:", err));
 
-// --- SUSTITUYE LAS LÍNEAS 20-24 POR ESTO ---
+// Esquema de Usuario Actualizado 2026
 const User = mongoose.model('User', new mongoose.Schema({
     username: { type: String, required: true, unique: true },
     email: { type: String, required: true, unique: true },
     password: { type: String, required: true },
-    victorias: { type: Number, default: 0 }, // Nueva estadística 2026
-    monedas: { type: Number, default: 0 }    // Economía del juego
+    victorias: { type: Number, default: 0 },
+    monedas: { type: Number, default: 0 }
 }));
+
 // --- VARIABLES DE ESTADO ---
 let players = {};
 let jugadoresEnEspera = [];
 let hostId = null;
 let partidaIniciada = false;
 let items = [];
-let totalAlEmpezar = 0; // Para calcular el ranking correctamente
+let totalAlEmpezar = 0; 
 const WORLD_SIZE = 5000;
 
-// --- DENTRO DE io.on('connection') ---
-
-socket.on('eliminar_jugador', async (targetId) => {
-    if (players[targetId] && partidaIniciada) {
-        const rankingActual = Object.keys(players).length;
-        
-        // Recompensa por eliminación al atacante
-        if (User.exists({ _id: socket.userId })) {
-            await User.findByIdAndUpdate(socket.userId, { $inc: { monedas: 10 } });
-        }
-
-        io.to(targetId).emit('has_muerto', rankingActual);
-        
-        // Efecto de explosión para todos
-        io.emit('efecto_explosion', { x: players[targetId].x, y: players[targetId].y });
-
-        delete players[targetId];
-        io.emit('playerDisconnected', targetId);
-
-        const sobrevivientes = Object.keys(players);
-        if (sobrevivientes.length === 1) {
-            const ganadorId = sobrevivientes[0];
-            // Guardar victoria en DB
-            const userGanador = await User.findByIdAndUpdate(ganadorId, { 
-                $inc: { victorias: 1, monedas: 100 } 
-            }, { new: true });
-
-            io.to(ganadorId).emit('eres_ganador', { 
-                victorias: userGanador.victorias, 
-                monedas: userGanador.monedas 
-            });
-            
-            partidaIniciada = false;
-            jugadoresEnEspera = [];
-            hostId = null;
-        }
-    }
-});
-
-// Variables de la Zona y Fases
 let zona = { x: 2500, y: 2500, radio: 2500 };
 let radioObjetivo = 2500;
 let faseActual = 1;
@@ -97,8 +58,6 @@ function generarItems() {
 }
 
 // --- BUCLES DE LÓGICA ---
-
-// Cierre suave
 setInterval(() => {
     if (partidaIniciada) {
         if (zona.radio > radioObjetivo) {
@@ -109,7 +68,6 @@ setInterval(() => {
     }
 }, 100);
 
-// Manejo de Fases
 setInterval(() => {
     if (partidaIniciada) {
         if (tiempoParaSiguienteFase > 0) {
@@ -126,6 +84,7 @@ setInterval(() => {
     }
 }, 1000);
 
+// --- CONEXIONES SOCKET ---
 io.on('connection', (socket) => {
     
     socket.on('registrar_usuario', async (datos) => {
@@ -142,6 +101,9 @@ io.on('connection', (socket) => {
         try {
             const usuario = await User.findOne({ email: datos.email });
             if (usuario && await bcrypt.compare(datos.password, usuario.password)) {
+                // Guardamos el ID de la DB en el socket para transacciones
+                socket.dbId = usuario._id; 
+                
                 if (!jugadoresEnEspera.includes(socket.id)) {
                     jugadoresEnEspera.push(socket.id);
                     if (!hostId) hostId = socket.id;
@@ -161,7 +123,6 @@ io.on('connection', (socket) => {
             radioObjetivo = 2500;
             items = generarItems();
             
-            // Llenamos la lista de jugadores activos
             players = {};
             jugadoresEnEspera.forEach(id => {
                 players[id] = { x: 2500, y: 2500, hasWeapon: false };
@@ -184,24 +145,43 @@ io.on('connection', (socket) => {
         io.emit('item_eliminado', id);
     });
 
-    // Lógica de eliminación corregida con Ranking
-    socket.on('eliminar_jugador', (targetId) => {
+    socket.on('eliminar_jugador', async (targetId) => {
         if (players[targetId] && partidaIniciada) {
-            // El ranking es el número de personas vivas en este momento
             const rankingActual = Object.keys(players).length;
             
-            // Le enviamos su posición final al que murió
+            // 1. Recompensa por kill (10 monedas)
+            if (socket.dbId && targetId !== socket.id) {
+                await User.findByIdAndUpdate(socket.dbId, { $inc: { monedas: 10 } });
+            }
+
+            // 2. Avisar muerte y efecto visual
             io.to(targetId).emit('has_muerto', rankingActual);
+            io.emit('efecto_explosion', { x: players[targetId].x, y: players[targetId].y });
             
             delete players[targetId];
             io.emit('playerDisconnected', targetId);
 
-            // Verificar si queda solo un ganador
+            // 3. Verificar Ganador
             const sobrevivientes = Object.keys(players);
             if (sobrevivientes.length === 1) {
-                io.to(sobrevivientes[0]).emit('eres_ganador');
+                const ganadorSocketId = sobrevivientes[0];
+                const ganadorSocket = io.sockets.sockets.get(ganadorSocketId);
+
+                let statsActualizadas = { victorias: 0, monedas: 0 };
+
+                if (ganadorSocket && ganadorSocket.dbId) {
+                    const userGanador = await User.findByIdAndUpdate(
+                        ganadorSocket.dbId, 
+                        { $inc: { victorias: 1, monedas: 100 } }, 
+                        { new: true }
+                    );
+                    statsActualizadas.victorias = userGanador.victorias;
+                    statsActualizadas.monedas = userGanador.monedas;
+                }
+
+                io.to(ganadorSocketId).emit('eres_ganador', statsActualizadas);
                 partidaIniciada = false;
-                jugadoresEnEspera = []; // Limpiamos sala para la siguiente
+                jugadoresEnEspera = []; 
                 hostId = null;
             }
         }
@@ -219,5 +199,6 @@ io.on('connection', (socket) => {
 
 const PORT = process.env.PORT || 10000;
 server.listen(PORT, () => console.log(`🚀 Servidor en puerto ${PORT}`));
+```[cite: 3]
 
 
