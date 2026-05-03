@@ -10,12 +10,10 @@ const io = new Server(server, {
     cors: { origin: "*", methods: ["GET", "POST"], credentials: true }
 });
 
-// --- CONEXIÓN MONGO ---
 mongoose.connect(process.env.MONGODB_URI)
-  .then(() => console.log("🔥 Base de datos conectada con éxito"))
-  .catch(err => console.error("❌ Error al conectar MongoDB:", err));
+  .then(() => console.log("🔥 DB Conectada"))
+  .catch(err => console.error("❌ Error DB:", err));
 
-// Esquema de Usuario
 const User = mongoose.model('User', new mongoose.Schema({
     username: { type: String, required: true, unique: true },
     email: { type: String, required: true, unique: true },
@@ -24,7 +22,6 @@ const User = mongoose.model('User', new mongoose.Schema({
     monedas: { type: Number, default: 0 }
 }));
 
-// --- VARIABLES DE ESTADO ---
 let players = {};
 let jugadoresEnEspera = [];
 let hostId = null;
@@ -37,47 +34,37 @@ let radioObjetivo = 2500;
 let faseActual = 1;
 let tiempoParaSiguienteFase = 120;
 
+// Muros reestructurados para un mapa más táctico[cite: 7]
 const walls = [
-    {x: 1000, y: 1000, w: 400, h: 40}, {x: 3000, y: 2000, w: 40, h: 500},
-    {x: 1500, y: 3500, w: 600, h: 40}, {x: 4000, y: 1000, w: 40, h: 600},
-    {x: 800, y: 2500, w: 40, h: 400}, {x: 2500, y: 800, w: 500, h: 40}
+    {x: 500, y: 500, w: 1000, h: 40}, {x: 500, y: 500, w: 40, h: 1000},
+    {x: 3500, y: 500, w: 1000, h: 40}, {x: 4460, y: 500, w: 40, h: 1000},
+    {x: 500, y: 3500, w: 1000, h: 40}, {x: 500, y: 3500, w: 40, h: 1000},
+    {x: 3500, y: 3500, w: 1000, h: 40}, {x: 4460, y: 3500, w: 40, h: 1000},
+    {x: 2200, y: 2200, w: 600, h: 600} // El "Core" central
 ];
 
 function generarItems() {
     let nuevosItems = [];
-    const MIN_DISTANCIA = 300; 
-    while (nuevosItems.length < 60) {
-        let x = Math.random() * 4600 + 200;
-        let y = Math.random() * 4600 + 200;
-        let muyCerca = nuevosItems.some(it => Math.sqrt(Math.pow(x-it.x,2)+Math.pow(y-it.y,2)) < MIN_DISTANCIA);
-        if (!muyCerca) {
-            nuevosItems.push({ id: nuevosItems.length, x, y, type: Math.random() > 0.8 ? 'dash' : 'weapon' });
-        }
+    const tipos = ['speed', 'weapon', 'shield'];
+    for(let i=0; i<80; i++){
+        nuevosItems.push({
+            id: i,
+            x: Math.random() * 4400 + 300,
+            y: Math.random() * 4400 + 300,
+            type: tipos[Math.floor(Math.random() * tipos.length)]
+        });
     }
     return nuevosItems;
 }
 
-// --- BUCLES DE LÓGICA ---
+// Lógica de Zona[cite: 7]
 setInterval(() => {
     if (partidaIniciada) {
-        if (zona.radio > radioObjetivo) zona.radio -= 0.6;
+        if (zona.radio > radioObjetivo) zona.radio -= 0.8;
         io.emit('actualizar_zona', { zona, fase: faseActual, tiempo: tiempoParaSiguienteFase });
     }
 }, 100);
 
-setInterval(() => {
-    if (partidaIniciada && tiempoParaSiguienteFase > 0) {
-        tiempoParaSiguienteFase--;
-    } else if (partidaIniciada && faseActual < 4) {
-        faseActual++;
-        tiempoParaSiguienteFase = 120;
-        if (faseActual === 2) radioObjetivo = 1600;
-        if (faseActual === 3) radioObjetivo = 700;
-        if (faseActual === 4) radioObjetivo = 0;
-    }
-}, 1000);
-
-// --- SOCKETS ---
 io.on('connection', (socket) => {
     socket.on('registrar_usuario', async (datos) => {
         try {
@@ -108,10 +95,12 @@ io.on('connection', (socket) => {
     socket.on('solicitar_inicio_partida', () => {
         if (socket.id === hostId) {
             partidaIniciada = true;
+            faseActual = 1;
+            zona.radio = 2500;
             items = generarItems();
             players = {};
             jugadoresEnEspera.forEach(id => {
-                players[id] = { x: 2500, y: 2500, type: 'circulo', vivo: true };
+                players[id] = { x: 2500 + (Math.random()*200-100), y: 2500 + (Math.random()*200-100), vivo: true, type: 'neon' };
             });
             io.emit('iniciar_partida', { items, zona, walls });
         }
@@ -124,11 +113,18 @@ io.on('connection', (socket) => {
         }
     });
 
+    socket.on('eliminar_jugador', (targetId) => {
+        if(players[targetId]) {
+            io.emit('efecto_explosion', { x: players[targetId].x, y: players[targetId].y });
+            delete players[targetId];
+            io.emit('playerDisconnected', targetId);
+        }
+    });
+
     socket.on('disconnect', () => {
         delete players[socket.id];
         jugadoresEnEspera = jugadoresEnEspera.filter(id => id !== socket.id);
         if (socket.id === hostId) hostId = jugadoresEnEspera[0] || null;
-        io.emit('playerDisconnected', socket.id);
         io.emit('actualizar_sala', { total: jugadoresEnEspera.length, hostId });
     });
 });
