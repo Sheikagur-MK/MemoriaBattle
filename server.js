@@ -46,13 +46,27 @@ const walls = [
 
 function generarItems() {
     let nuevosItems = [];
-    for(let i=0; i<80; i++) {
-        nuevosItems.push({
-            id: i,
-            x: Math.random() * 4800 + 100,
-            y: Math.random() * 4800 + 100,
-            type: Math.random() > 0.8 ? 'dash' : 'weapon' 
+    let intentos = 0;
+    const MIN_DISTANCIA = 300; // Equivalente a 10 cuadros de 30px
+
+    while (nuevosItems.length < 60 && intentos < 500) {
+        let x = Math.random() * 4600 + 200;
+        let y = Math.random() * 4600 + 200;
+        
+        // Verificar que no esté cerca de otros ítems
+        let muyCerca = nuevosItems.some(it => {
+            let dist = Math.sqrt(Math.pow(x - it.x, 2) + Math.pow(y - it.y, 2));
+            return dist < MIN_DISTANCIA;
         });
+
+        if (!muyCerca) {
+            nuevosItems.push({
+                id: nuevosItems.length,
+                x, y,
+                type: Math.random() > 0.8 ? 'dash' : 'weapon' 
+            });
+        }
+        intentos++;
     }
     return nuevosItems;
 }
