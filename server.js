@@ -12,7 +12,6 @@ const io = new Server(server, { cors: { origin: "*" } });
 mongoose.connect(process.env.MONGODB_URI)
   .then(() => console.log("🔥 Base de datos conectada con éxito"))
   .catch(err => console.error("❌ Error al conectar MongoDB:", err));
-app.use(express.static(path.join(__dirname, 'public')));
 
 let rooms = {};
 
