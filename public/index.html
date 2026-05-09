@@ -1,70 +1,130 @@
 <!DOCTYPE html>
-<html>
+<html lang="es">
 <head>
-    <title>Global Neon Arena</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NEON STRIKE | Global Arena</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <style>
-        body { margin: 0; background: #000; overflow: hidden; color: #fff; font-family: sans-serif; }
-        canvas { display: block; background: radial-gradient(circle, #111, #000); }
-        #ui { position: absolute; top: 10px; left: 10px; pointer-events: none; }
+        :root { --neon: #0ff; --danger: #f05; --bg: #050505; --panel: rgba(0, 255, 255, 0.05); }
+        body, html { margin: 0; padding: 0; background: var(--bg); color: white; font-family: 'Segoe UI', sans-serif; overflow: hidden; }
+        
+        /* Fondo Animado */
+        #bg-canvas { position: fixed; top: 0; left: 0; z-index: -1; filter: blur(2px); }
+
+        /* Menú Principal */
+        .screen { position: absolute; width: 100%; height: 100%; display: none; flex-direction: column; align-items: center; justify-content: center; transition: 0.5s; }
+        .active { display: flex; animation: fadeIn 0.8s ease-out; }
+
+        .logo { font-size: 80px; font-weight: 900; letter-spacing: 10px; color: var(--neon); text-shadow: 0 0 20px var(--neon); margin-bottom: 50px; }
+
+        /* Botones de Menú */
+        .btn-menu { width: 300px; padding: 15px; margin: 10px; background: transparent; border: 1px solid var(--neon); color: var(--neon); font-size: 18px; cursor: pointer; position: relative; overflow: hidden; transition: 0.3s; text-transform: uppercase; }
+        .btn-menu:hover { background: var(--neon); color: black; box-shadow: 0 0 30px var(--neon); transform: skewX(-10deg); }
+
+        /* Lobby y Perfil */
+        .profile-card { position: absolute; top: 20px; left: 20px; display: flex; align-items: center; background: var(--panel); padding: 10px 20px; border-left: 4px solid var(--neon); }
+        .avatar { width: 50px; height: 50px; background: #222; border: 2px solid var(--neon); border-radius: 50%; margin-right: 15px; }
+
+        /* Mercado (Shop) */
+        .shop-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; padding: 20px; }
+        .shop-item { background: var(--panel); border: 1px solid #333; padding: 20px; text-align: center; transition: 0.3s; }
+        .shop-item:hover { border-color: var(--neon); transform: translateY(-5px); }
+
+        /* Salas Privadas */
+        .room-list { width: 80%; max-height: 300px; overflow-y: auto; background: rgba(0,0,0,0.5); border: 1px solid #333; }
+        .room-entry { display: flex; justify-content: space-between; padding: 15px; border-bottom: 1px solid #222; }
+
+        @keyframes fadeIn { from { opacity: 0; transform: scale(1.1); } to { opacity: 1; transform: scale(1); } }
     </style>
 </head>
 <body>
-    <div id="ui">Jugadores online: <span id="count">0</span></div>
-    <canvas id="game"></canvas>
 
-    <script src="/socket.io/socket.io.js"></script>
+    <canvas id="bg-canvas"></canvas>
+
+    <!-- UI: Perfil siempre visible en menús -->
+    <div id="top-ui" class="profile-card">
+        <div class="avatar"></div>
+        <div>
+            <div style="font-weight: bold;">USER_0926</div>
+            <div style="color: var(--neon); font-size: 12px;">NIVEL 42 | <i class="fa-solid fa-coins"></i> 1,500</div>
+        </div>
+    </div>
+
+    <!-- PANTALLA: MENÚ PRINCIPAL -->
+    <div id="menu-screen" class="screen active">
+        <div class="logo">NEON STRIKE</div>
+        <button class="btn-menu" onclick="changeScreen('lobby-screen')"><i class="fa-solid fa-play"></i> Iniciar Partida</button>
+        <button class="btn-menu" onclick="changeScreen('shop-screen')"><i class="fa-solid fa-cart-shopping"></i> Mercado</button>
+        <button class="btn-menu" onclick="changeScreen('rooms-screen')"><i class="fa-solid fa-door-open"></i> Salas Privadas</button>
+        <button class="btn-menu" onclick="changeScreen('settings-screen')"><i class="fa-solid fa-gear"></i> Ajustes</button>
+    </div>
+
+    <!-- PANTALLA: SALAS PRIVADAS -->
+    <div id="rooms-screen" class="screen">
+        <h2>SALAS DISPONIBLES</h2>
+        <div class="room-list">
+            <div class="room-entry"><span>SERVER_CDMX_01 (4/8)</span> <button class="btn-menu" style="width: 100px;">UNIRSE</button></div>
+            <div class="room-entry"><span>PRO_SCRIMS_LA_PAZ (1/2)</span> <button class="btn-menu" style="width: 100px;">UNIRSE</button></div>
+        </div>
+        <button class="btn-menu" onclick="changeScreen('menu-screen')">Volver</button>
+    </div>
+
+    <!-- PANTALLA: MERCADO -->
+    <div id="shop-screen" class="screen">
+        <h2>MERCADO DE SKINS</h2>
+        <div class="shop-grid">
+            <div class="shop-item"><h3>Cian Pulse</h3><p>500 CR</p><button class="btn-menu" style="width: 120px;">COMPRAR</button></div>
+            <div class="shop-item"><h3>Emerald Blade</h3><p>1200 CR</p><button class="btn-menu" style="width: 120px;">COMPRAR</button></div>
+            <div class="shop-item"><h3>Shadow Step</h3><p>2000 CR</p><button class="btn-menu" style="width: 120px;">COMPRAR</button></div>
+        </div>
+        <button class="btn-menu" onclick="changeScreen('menu-screen')">Volver</button>
+    </div>
+
     <script>
-        const socket = io();
-        const canvas = document.getElementById('game');
+        // Sistema de Navegación
+        function changeScreen(screenId) {
+            document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+            document.getElementById(screenId).classList.add('active');
+        }
+
+        // Fondo de partículas interactivo (El "mosh" visual)
+        const canvas = document.getElementById('bg-canvas');
         const ctx = canvas.getContext('2d');
         canvas.width = window.innerWidth;
         canvas.height = window.innerHeight;
 
-        let localPlayer = { x: 100, y: 100, speed: 5 };
-        let allPlayers = {};
-
-        // Controles
-        const keys = {};
-        window.onkeydown = (e) => keys[e.key] = true;
-        window.onkeyup = (e) => keys[e.key] = false;
-
-        socket.on('updatePlayers', (data) => {
-            allPlayers = data;
-            document.getElementById('count').innerText = Object.keys(data).length;
-        });
-
-        function loop() {
-            // Lógica de movimiento local
-            let moved = false;
-            if (keys['ArrowUp'] || keys['w']) { localPlayer.y -= localPlayer.speed; moved = true; }
-            if (keys['ArrowDown'] || keys['s']) { localPlayer.y += localPlayer.speed; moved = true; }
-            if (keys['ArrowLeft'] || keys['a']) { localPlayer.x -= localPlayer.speed; moved = true; }
-            if (keys['ArrowRight'] || keys['d']) { localPlayer.x += localPlayer.speed; moved = true; }
-
-            if (moved) {
-                socket.emit('move', { x: localPlayer.x, y: localPlayer.y });
+        let particles = [];
+        class Particle {
+            constructor() {
+                this.x = Math.random() * canvas.width;
+                this.y = Math.random() * canvas.height;
+                this.size = Math.random() * 2;
+                this.speedX = (Math.random() - 0.5) * 1;
+                this.speedY = (Math.random() - 0.5) * 1;
             }
-
-            // Dibujado
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-            
-            for (let id in allPlayers) {
-                let p = allPlayers[id];
-                ctx.fillStyle = p.color;
-                ctx.shadowBlur = 15;
-                ctx.shadowColor = p.color;
+            update() {
+                this.x += this.speedX;
+                this.y += this.speedY;
+                if (this.x > canvas.width) this.x = 0;
+                if (this.y > canvas.height) this.y = 0;
+            }
+            draw() {
+                ctx.fillStyle = 'rgba(0, 255, 255, 0.2)';
                 ctx.beginPath();
-                ctx.arc(p.x, p.y, 15, 0, Math.PI * 2);
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
                 ctx.fill();
-                
-                if (id === socket.id) {
-                    ctx.strokeStyle = '#fff';
-                    ctx.stroke();
-                }
             }
-            requestAnimationFrame(loop);
         }
-        loop();
+
+        for(let i=0; i<100; i++) particles.push(new Particle());
+
+        function animate() {
+            ctx.clearRect(0,0, canvas.width, canvas.height);
+            particles.forEach(p => { p.update(); p.draw(); });
+            requestAnimationFrame(animate);
+        }
+        animate();
     </script>
 </body>
 </html>
