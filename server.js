@@ -11,46 +11,48 @@ const io = new Server(server, {
     cors: { origin: "*", methods: ["GET", "POST"], credentials: true }
 });
 
-// --- MIDDLEWARES (Añadido para el Index) ---
-app.use(express.json());
-app.use(express.static(path.join(__dirname, 'public'))); // Esto servirá tu index.html
 
 // --- CONEXIÓN MONGO (Respetada) ---
 mongoose.connect(process.env.MONGODB_URI)
   .then(() => console.log("🔥 Base de datos conectada con éxito"))
   .catch(err => console.error("❌ Error al conectar MongoDB:", err));
-
-// --- MODELO PARA GUARDAR LAYOUTS (Nuevo) ---
-const Layout = mongoose.model('Layout', new mongoose.Schema({
-    nombre: String,
-    datos: Object,
-    fecha: { type: Date, default: Date.now }
-}));
-
-// --- RUTA PARA GUARDAR TUS DISEÑOS (Nuevo) ---
-app.post('/api/save-layout', async (req, res) => {
-    try {
-        const nuevoLayout = new Layout(req.body);
-        await nuevoLayout.save();
-        res.json({ exito: true });
-    } catch (e) { res.json({ exito: false }); }
+const playerSchema = new mongoose.Schema({
+    username: String,
+    wins: { type: Number, default: 0 }
 });
-
-// --- LÓGICA DE JUEGO EXISTENTE (Sin cambios) ---
-const User = mongoose.model('User', new mongoose.Schema({
-    username: { type: String, required: true, unique: true },
-    email: { type: String, required: true, unique: true },
-    password: { type: String, required: true }
-}));
+const PlayerModel = mongoose.model('Player', playerSchema);
 
 let players = {};
-let jugadoresEnEspera = [];
-// ... (Aquí sigue todo tu código de sockets y lógica de juego exactamente igual) ...
 
-// --- SERVIR EL INDEX (Añadido) ---
-app.get('*', (req, res) => {
-    res.sendFile(path.join(__dirname, 'public', 'index.html'));
-});
+app.use(express.static(path.join(__dirname, 'public')));
+
+io.on('connection', (socket) => {
+    console.log('Jugador conectado:', socket.id);
+    
+    // Crear nuevo jugador
+    players[socket.id] = {
+        x: Math.random() * 700,
+        y: Math.random() * 400,
+        color: `hsl(${Math.random() * 360}, 70%, 50%)`,
+        id: socket.id
+    };
+
+    // Enviar estado actual a todos
+    io.emit('updatePlayers', players);
+
+    // Recibir movimiento
+    socket.on('move', (data) => {
+        if (players[socket.id]) {
+            players[socket.id].x = data.x;
+            players[socket.id].y = data.y;
+            socket.broadcast.emit('updatePlayers', players);
+        }
+    });
+
+    socket.on('disconnect', () => {
+        delete players[socket.id];
+        io.emit('updatePlayers', players);
+    });
 
 const PORT = process.env.PORT || 10000;
 server.listen(PORT, () => console.log(`🚀 HG Studios activo en puerto ${PORT}`));
