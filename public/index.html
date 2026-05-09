@@ -12,18 +12,18 @@
         /* Fondo Animado */
         #bg-canvas { position: fixed; top: 0; left: 0; z-index: -1; filter: blur(2px); }
 
-        /* Menú Principal */
-        .screen { position: absolute; width: 100%; height: 100%; display: none; flex-direction: column; align-items: center; justify-content: center; transition: 0.5s; }
+        /* Estructura de Pantallas */
+        .screen { position: absolute; width: 100%; height: 100%; display: none; flex-direction: column; align-items: center; justify-content: center; transition: 0.5s; text-align: center; }
         .active { display: flex; animation: fadeIn 0.8s ease-out; }
 
         .logo { font-size: 80px; font-weight: 900; letter-spacing: 10px; color: var(--neon); text-shadow: 0 0 20px var(--neon); margin-bottom: 50px; }
 
-        /* Botones de Menú */
+        /* Botones Estilo Neon */
         .btn-menu { width: 300px; padding: 15px; margin: 10px; background: transparent; border: 1px solid var(--neon); color: var(--neon); font-size: 18px; cursor: pointer; position: relative; overflow: hidden; transition: 0.3s; text-transform: uppercase; }
         .btn-menu:hover { background: var(--neon); color: black; box-shadow: 0 0 30px var(--neon); transform: skewX(-10deg); }
 
-        /* Lobby y Perfil */
-        .profile-card { position: absolute; top: 20px; left: 20px; display: flex; align-items: center; background: var(--panel); padding: 10px 20px; border-left: 4px solid var(--neon); }
+        /* UI de Perfil */
+        .profile-card { position: absolute; top: 20px; left: 20px; display: flex; align-items: center; background: var(--panel); padding: 10px 20px; border-left: 4px solid var(--neon); z-index: 100; }
         .avatar { width: 50px; height: 50px; background: #222; border: 2px solid var(--neon); border-radius: 50%; margin-right: 15px; }
 
         /* Mercado (Shop) */
@@ -31,9 +31,9 @@
         .shop-item { background: var(--panel); border: 1px solid #333; padding: 20px; text-align: center; transition: 0.3s; }
         .shop-item:hover { border-color: var(--neon); transform: translateY(-5px); }
 
-        /* Salas Privadas */
-        .room-list { width: 80%; max-height: 300px; overflow-y: auto; background: rgba(0,0,0,0.5); border: 1px solid #333; }
-        .room-entry { display: flex; justify-content: space-between; padding: 15px; border-bottom: 1px solid #222; }
+        /* Listas y Contenedores */
+        .room-list, #player-list { width: 80%; max-width: 600px; max-height: 300px; overflow-y: auto; background: rgba(0,0,0,0.5); border: 1px solid #333; padding: 10px; margin-bottom: 20px; }
+        .room-entry { display: flex; justify-content: space-between; padding: 15px; border-bottom: 1px solid #222; align-items: center; }
 
         @keyframes fadeIn { from { opacity: 0; transform: scale(1.1); } to { opacity: 1; transform: scale(1); } }
     </style>
@@ -42,53 +42,87 @@
 
     <canvas id="bg-canvas"></canvas>
 
-    <!-- UI: Perfil siempre visible en menús -->
     <div id="top-ui" class="profile-card">
         <div class="avatar"></div>
         <div>
-            <div style="font-weight: bold;">USER_0926</div>
-            <div style="color: var(--neon); font-size: 12px;">NIVEL 42 | <i class="fa-solid fa-coins"></i> 1,500</div>
+            <div id="user-name" style="font-weight: bold;">USER_0926</div>
+            <div style="color: var(--neon); font-size: 12px;">NIVEL 42 | <i class="fa-solid fa-coins"></i> <span id="user-coins">1,500</span></div>
         </div>
     </div>
 
-    <!-- PANTALLA: MENÚ PRINCIPAL -->
     <div id="menu-screen" class="screen active">
         <div class="logo">NEON STRIKE</div>
-        <button class="btn-menu" onclick="changeScreen('lobby-screen')"><i class="fa-solid fa-play"></i> Iniciar Partida</button>
+        <button class="btn-menu" onclick="startLobby()"><i class="fa-solid fa-play"></i> Iniciar Partida</button>
         <button class="btn-menu" onclick="changeScreen('shop-screen')"><i class="fa-solid fa-cart-shopping"></i> Mercado</button>
         <button class="btn-menu" onclick="changeScreen('rooms-screen')"><i class="fa-solid fa-door-open"></i> Salas Privadas</button>
         <button class="btn-menu" onclick="changeScreen('settings-screen')"><i class="fa-solid fa-gear"></i> Ajustes</button>
     </div>
 
-    <!-- PANTALLA: SALAS PRIVADAS -->
+    <div id="lobby-screen" class="screen">
+        <h2 style="color: var(--neon)">LOBBY DE ESPERA</h2>
+        <div id="player-list">
+            <p>Buscando conexión con la arena...</p>
+        </div>
+        <div style="margin-bottom: 20px;">
+            <i class="fa-solid fa-circle-notch fa-spin"></i> Esperando más jugadores...
+        </div>
+        <button class="btn-menu" onclick="changeScreen('menu-screen')">Abandonar</button>
+    </div>
+
     <div id="rooms-screen" class="screen">
         <h2>SALAS DISPONIBLES</h2>
         <div class="room-list">
-            <div class="room-entry"><span>SERVER_CDMX_01 (4/8)</span> <button class="btn-menu" style="width: 100px;">UNIRSE</button></div>
-            <div class="room-entry"><span>PRO_SCRIMS_LA_PAZ (1/2)</span> <button class="btn-menu" style="width: 100px;">UNIRSE</button></div>
+            <div class="room-entry"><span>SERVER_CDMX_01 (4/8)</span> <button class="btn-menu" style="width: 100px; padding: 5px;">UNIRSE</button></div>
+            <div class="room-entry"><span>PRO_SCRIMS_LA_PAZ (1/2)</span> <button class="btn-menu" style="width: 100px; padding: 5px;">UNIRSE</button></div>
         </div>
         <button class="btn-menu" onclick="changeScreen('menu-screen')">Volver</button>
     </div>
 
-    <!-- PANTALLA: MERCADO -->
     <div id="shop-screen" class="screen">
         <h2>MERCADO DE SKINS</h2>
         <div class="shop-grid">
-            <div class="shop-item"><h3>Cian Pulse</h3><p>500 CR</p><button class="btn-menu" style="width: 120px;">COMPRAR</button></div>
-            <div class="shop-item"><h3>Emerald Blade</h3><p>1200 CR</p><button class="btn-menu" style="width: 120px;">COMPRAR</button></div>
-            <div class="shop-item"><h3>Shadow Step</h3><p>2000 CR</p><button class="btn-menu" style="width: 120px;">COMPRAR</button></div>
+            <div class="shop-item"><h3>Cian Pulse</h3><p>500 CR</p><button class="btn-menu" style="width: 120px;" onclick="buyItem('Cian Pulse')">COMPRAR</button></div>
+            <div class="shop-item"><h3>Emerald Blade</h3><p>1200 CR</p><button class="btn-menu" style="width: 120px;" onclick="buyItem('Emerald Blade')">COMPRAR</button></div>
+            <div class="shop-item"><h3>Shadow Step</h3><p>2000 CR</p><button class="btn-menu" style="width: 120px;" onclick="buyItem('Shadow Step')">COMPRAR</button></div>
         </div>
         <button class="btn-menu" onclick="changeScreen('menu-screen')">Volver</button>
     </div>
 
+    <script src="/socket.io/socket.io.js"></script>
+
     <script>
-        // Sistema de Navegación
+        // 1. Conexión al Servidor
+        const socket = io();
+
+        // 2. Sistema de Navegación
         function changeScreen(screenId) {
             document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
             document.getElementById(screenId).classList.add('active');
         }
 
-        // Fondo de partículas interactivo (El "mosh" visual)
+        // 3. Lógica de Red (Socket.io)
+        function startLobby() {
+            changeScreen('lobby-screen');
+            socket.emit('joinRoom', 'global-arena');
+        }
+
+        socket.on('roomUpdate', (players) => {
+            const list = document.getElementById('player-list');
+            list.innerHTML = `<h3>Jugadores en Línea: ${players.length}</h3>`;
+            players.forEach(id => {
+                list.innerHTML += `<div class="room-entry">ID: ${id.substring(0,6)}... <span style="color:var(--neon)">LISTO</span></div>`;
+            });
+        });
+
+        function buyItem(itemName) {
+            socket.emit('buyItem', { item: itemName });
+        }
+
+        socket.on('purchaseSuccess', (data) => {
+            alert('¡Compraste: ' + data.item + '!');
+        });
+
+        // 4. Fondo de partículas interactivo
         const canvas = document.getElementById('bg-canvas');
         const ctx = canvas.getContext('2d');
         canvas.width = window.innerWidth;
@@ -125,6 +159,11 @@
             requestAnimationFrame(animate);
         }
         animate();
+
+        window.addEventListener('resize', () => {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        });
     </script>
 </body>
 </html>
