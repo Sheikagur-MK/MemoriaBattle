@@ -1,40 +1,104 @@
-const express = require("express");
-const http = require("http");
-const { Server } = require("socket.io");
-const mongoose = require("mongoose");
-const bcrypt = require("bcryptjs");
-const jwt = require("jsonwebtoken");
-const path = require("path");
-require("dotenv").config();
+const express = require('express');
+const http = require('http');
+const { Server } = require('socket.io');
+const mongoose = require('mongoose');
+const jwt = require('jsonwebtoken');
+const bcrypt = require('bcryptjs');
+const path = require('path');
+require('dotenv').config();
 
 const app = express();
 const server = http.createServer(app);
-const io = new Server(server);
+const io = new Server(server, { cors: { origin: "*" } });
 
-const PORT = process.env.PORT || 3000;
-const JWT_SECRET = process.env.JWT_SECRET || "token_secreto_2026";
-const MAP_SIZE = 5000;
-
-// Middleware
 app.use(express.json());
-app.use(express.static(path.join(__dirname, "public")));
+app.use(express.static(path.join(__dirname, 'public')));
 
-// --- BASE DE DATOS ---
-mongoose.connect(process.env.MONGODB_URI)
-    .then(() => console.log("✅ DB Conectada"))
-    .catch(err => console.error("❌ Error DB:", err));
+// Conexión a MongoDB
+mongoose.connect(process.env.MONGODB_URI).then(() => console.log("🌌 Database Nexus 2026 Online"));
 
-const User = mongoose.model("User", new mongoose.Schema({
+// Modelo de Usuario con Skins y Progreso
+const UserSchema = new mongoose.Schema({
     username: { type: String, unique: true, required: true },
     email: { type: String, unique: true, required: true },
     password: { type: String, required: true },
-    coins: { type: Number, default: 0 }
-}));
+    points: { type: Number, default: 0 },
+    currentSkin: { type: String, default: 'sphere' },
+    unlockedSkins: { type: [String], default: ['sphere'] }
+});
+const User = mongoose.model('User', UserSchema);
 
-// --- RUTAS DE AUTENTICACIÓN ---
-app.post("/api/auth/register", async (req, res) => {
+// --- API DE AUTENTICACIÓN REAL ---
+app.post('/api/auth/register', async (req, res) => {
     try {
         const { username, email, password } = req.body;
+        const hashed = await bcrypt.hash(password, 10);
+        const user = await User.create({ username, email, password: hashed });
+        const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET || 'secret');
+        res.json({ token, user: { username, points: 0, currentSkin: 'sphere' } });
+    } catch (e) { res.status(400).json({ error: "El usuario o email ya existe" }); }
+});
+
+app.post('/api/auth/login', async (req, res) => {
+    const { email, password } = req.body;
+    const user = await User.findOne({ email });
+    if (!user || !await bcrypt.compare(password, user.password)) return res.status(401).json({ error: "Error de acceso" });
+    const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET || 'secret');
+    res.json({ token, user: { username: user.username, points: user.points, currentSkin: user.currentSkin, unlockedSkins: user.unlockedSkins } });
+});
+
+// --- LÓGICA BATTLE ROYALE (100 JUGADORES) ---
+const rooms = new Map();
+
+function createBattleRoom(id) {
+    return {
+        id,
+        players: new Map(),
+        status: 'LOBBY',
+        zone: { r: 3000, x: 0, y: 0 },
+        startTime: Date.now()
+    };
+}
+
+io.on('connection', (socket) => {
+    socket.on('join_queue', ({ user }) => {
+        let room = rooms.get('WORLD_ARENA') || createBattleRoom('WORLD_ARENA');
+        rooms.set('WORLD_ARENA', room);
+
+        room.players.set(socket.id, {
+            id: socket.id,
+            username: user.username,
+            skin: user.currentSkin,
+            x: (Math.random() - 0.5) * 4000,
+            z: (Math.random() - 0.5) * 4000,
+            hp: 100,
+            lastAttack: 0
+        });
+
+        socket.join(room.id);
+        if (room.players.size >= 100) room.status = 'IN_GAME';
+        io.to(room.id).emit('room_update', { status: room.status, count: room.players.size });
+    });
+
+    socket.on('player_move', (data) => {
+        const room = rooms.get('WORLD_ARENA');
+        if (!room) return;
+        const p = room.players.get(socket.id);
+        if (p) { p.x = data.x; p.z = data.z; p.rot = data.rot; }
+    });
+});
+
+// Loop de red a 30fps
+setInterval(() => {
+    rooms.forEach(room => {
+        if (room.players.size > 0) {
+            io.to(room.id).emit('tick', { players: Array.from(room.players.values()), zone: room.zone });
+        }
+    });
+}, 33);
+
+const PORT = process.env.PORT || 3000;
+server.listen(PORT, () => console.log(`🚀 Quantum Server running on port ${PORT}`));        const { username, email, password } = req.body;
         const hashed = await bcrypt.hash(password, 10);
         const user = await User.create({ username, email, password: hashed });
         const token = jwt.sign({ id: user._id }, JWT_SECRET);
