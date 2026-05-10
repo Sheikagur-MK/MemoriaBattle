@@ -42,7 +42,10 @@ const keys = { up: false, down: false, left: false, right: false, dash: false, p
 const viewTrail = new Map();
 const joystick = { active: false, id: null, x: 0, y: 0, radius: 48 };
 const SKILL_COOLDOWN_MS = 5000;
-const CAMERA_ZOOM = 0.68;
+/** Menor = cámara más alejada (más mapa visible). */
+const CAMERA_ZOOM = 0.5;
+const GROUND_CELL = 88;
+const GROUND_DOT = 22;
 let lastDashAt = 0;
 let lastPulseAt = 0;
 const renderedPlayers = new Map();
@@ -54,6 +57,63 @@ const shakeState = { power: 0, x: 0, y: 0 };
 
 function addShake(amount) {
   shakeState.power = Math.min(18, shakeState.power + amount);
+}
+
+function drawWorldGround(ctx, w, h, view, viewW, viewH) {
+  const g = ctx.createLinearGradient(0, 0, w, h);
+  g.addColorStop(0, "#0a0f1a");
+  g.addColorStop(0.45, "#0d1428");
+  g.addColorStop(1, "#080b14");
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, w, h);
+
+  const left = view.left;
+  const top = view.top;
+  const z = CAMERA_ZOOM;
+  const margin = GROUND_CELL * 2;
+
+  ctx.save();
+  ctx.globalAlpha = 0.22;
+  ctx.strokeStyle = "rgba(95, 130, 210, 0.35)";
+  ctx.lineWidth = 1;
+  for (let wx = Math.floor(left / GROUND_CELL) * GROUND_CELL; wx < left + viewW + margin; wx += GROUND_CELL) {
+    const a = { x: (wx - left) * z, y: 0 };
+    const b = { x: (wx - left) * z, y: h };
+    ctx.beginPath();
+    ctx.moveTo(a.x, 0);
+    ctx.lineTo(b.x, h);
+    ctx.stroke();
+  }
+  for (let wy = Math.floor(top / GROUND_CELL) * GROUND_CELL; wy < top + viewH + margin; wy += GROUND_CELL) {
+    ctx.beginPath();
+    ctx.moveTo(0, (wy - top) * z);
+    ctx.lineTo(w, (wy - top) * z);
+    ctx.stroke();
+  }
+  ctx.restore();
+
+  ctx.save();
+  ctx.globalAlpha = 0.14;
+  ctx.fillStyle = "rgba(120, 170, 255, 0.45)";
+  for (let wx = Math.floor(left / GROUND_DOT) * GROUND_DOT; wx < left + viewW + margin; wx += GROUND_DOT) {
+    for (let wy = Math.floor(top / GROUND_DOT) * GROUND_DOT; wy < top + viewH + margin; wy += GROUND_DOT) {
+      const sx = (wx - left) * z;
+      const sy = (wy - top) * z;
+      if (sx < -6 || sy < -6 || sx > w + 6 || sy > h + 6) continue;
+      ctx.beginPath();
+      ctx.arc(sx, sy, 1.1, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+  ctx.restore();
+
+  ctx.save();
+  const vg = ctx.createRadialGradient(w * 0.5, h * 0.52, w * 0.15, w * 0.5, h * 0.52, w * 0.75);
+  vg.addColorStop(0, "rgba(0,0,0,0)");
+  vg.addColorStop(1, "rgba(0,0,0,0.45)");
+  ctx.fillStyle = vg;
+  ctx.fillRect(0, 0, w, h);
+  ctx.restore();
 }
 
 function show(screenName) {
@@ -388,9 +448,9 @@ function drawGame() {
   const meRender = mePlayer ? renderedPlayers.get(me.username) : null;
   const meVx = meRender ? meRender.x - (meRender.lx ?? meRender.x) : 0;
   const meVy = meRender ? meRender.y - (meRender.ly ?? meRender.y) : 0;
-  const lookAhead = 170;
-  const lookX = clamp(meVx * lookAhead, -220, 220);
-  const lookY = clamp(meVy * lookAhead, -220, 220);
+  const lookAhead = 210;
+  const lookX = clamp(meVx * lookAhead, -280, 280);
+  const lookY = clamp(meVy * lookAhead, -280, 280);
   const cam = {
     x: mePlayer ? (meRender?.x || mePlayer.x) + lookX : mapSize / 2,
     y: mePlayer ? (meRender?.y || mePlayer.y) + lookY : mapSize / 2
@@ -408,11 +468,7 @@ function drawGame() {
 
   ctx.save();
   ctx.translate(shakeState.x, shakeState.y);
-  ctx.fillStyle = "#090e17";
-  ctx.fillRect(0, 0, w, h);
-  ctx.strokeStyle = "rgba(120,138,180,.15)";
-  for (let x = 0; x < w; x += 64) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, h); ctx.stroke(); }
-  for (let y = 0; y < h; y += 64) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke(); }
+  drawWorldGround(ctx, w, h, view, viewW, viewH);
 
   const zone = roomState.summary?.zone;
   if (zone) {
@@ -455,14 +511,38 @@ function drawGame() {
       ctx.fill();
       ctx.fillStyle = p.username === me.username ? "#8cf6ff" : "#d3deff";
     }
-    const st = organicState.get(p.username) || { stretch: 0, angle: 0 };
-    const targetStretch = clamp(vel.s * 0.08, 0, 0.42);
-    st.stretch += (targetStretch - st.stretch) * (moving ? 0.26 : 0.14);
+    const st = organicState.get(p.username) || {
+      stretch: 0,
+      angle: 0,
+      prevSpeed: 0,
+      elastic: 0,
+      accelLean: 0,
+      tail: []
+    };
+    st.tail = st.tail || [];
+    const speedNow = vel.s;
+    const speedDelta = speedNow - st.prevSpeed;
+    st.prevSpeed = speedNow * 0.4 + st.prevSpeed * 0.6;
+
+    /** Frenado brusco o pasar de moverse a casi quieto: rebote elástico (squash). */
+    if (speedDelta < -0.45 || (!moving && speedNow < 0.4 && st.elastic < 0.15)) {
+      st.elastic = Math.min(1, st.elastic + (speedDelta < -0.45 ? 0.42 : 0.18));
+    }
+    st.elastic *= 0.84;
+
+    /** Aceleración: estira un poco más al arrancar. */
+    const accelBoost = clamp(speedDelta * 0.35, 0, 0.18);
+    st.accelLean += (accelBoost - st.accelLean) * 0.35;
+    st.accelLean *= 0.92;
+
+    const speedStretch = clamp(speedNow * 0.09, 0, 0.44);
+    const brakeStretch = st.elastic * 0.32;
+    const targetStretch = clamp(speedStretch + st.accelLean + brakeStretch * 0.4, 0, 0.58);
+    st.stretch += (targetStretch - st.stretch) * (moving || st.elastic > 0.08 ? 0.28 : 0.12);
     const targetAngle = Math.atan2(vel.y, vel.x || 0.0001);
     const diff = Math.atan2(Math.sin(targetAngle - st.angle), Math.cos(targetAngle - st.angle));
     st.angle += diff * 0.25;
-    if (!moving) st.stretch *= 0.92;
-    st.tail = st.tail || [];
+    if (!moving) st.stretch *= 0.9;
     if (moving && p.alive) {
       const backX = x - Math.cos(st.angle) * (14 * CAMERA_ZOOM);
       const backY = y - Math.sin(st.angle) * (14 * CAMERA_ZOOM);
@@ -488,9 +568,11 @@ function drawGame() {
     }
 
     const base = 12 * CAMERA_ZOOM;
-    const sx = 1 + st.stretch;
-    const sy = 1 - st.stretch * 0.55;
-    const wobble = moving ? Math.sin(performance.now() / 85) * 0.05 : 0;
+    /** Frenado: achata en dirección del movimiento y ensancha perpendicular (efecto “gusano”). */
+    const squash = st.elastic;
+    const sx = (1 + st.stretch) * (1 - squash * 0.22) + squash * 0.06;
+    const sy = (1 - st.stretch * 0.55) * (1 + squash * 0.28);
+    const wobble = moving ? Math.sin(performance.now() / 85) * 0.05 : squash * 0.08;
     ctx.save();
     ctx.translate(x, y);
     ctx.rotate(st.angle);
