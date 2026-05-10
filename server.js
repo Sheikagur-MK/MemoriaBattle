@@ -1,40 +1,64 @@
-const express = require('express');
-const http = require('http');
-const { Server } = require('socket.io');
-const mongoose = require('mongoose');
-const bcrypt = require('bcryptjs');
-const jwt = require('jsonwebtoken');
-const path = require('path');
-require('dotenv').config();
+const path = require("path");
+const express = require("express");
+const http = require("http");
+const { Server } = require("socket.io");
+const mongoose = require("mongoose");
+require("dotenv").config();
 
 const app = express();
 const server = http.createServer(app);
-const io = new Server(server, { cors: { origin: "*" } });
+const io = new Server(server);
 
+// CORRECCIÓN CRÍTICA: Definir la ruta de la carpeta pública correctamente
+const publicPath = path.join(__dirname, 'public');
+app.use(express.static(publicPath));
 app.use(express.json());
-app.use(express.static(path.join(__dirname, 'public')));
 
-// --- CONFIGURACIÓN DE DB 2026 ---
+// Conexión a MongoDB
 mongoose.connect(process.env.MONGODB_URI)
-  .then(() => console.log("🌌 GEO-STORM NEXUS: Base de datos vinculada"))
-  .catch(err => console.error("❌ FALLO DE NÚCLEO:", err));
+    .then(() => console.log("💎 NÚCLEO DE DATOS 2026 ONLINE"))
+    .catch(err => console.error("❌ ERROR DB:", err));
 
-const UserSchema = new mongoose.Schema({
-    username: { type: String, unique: true, required: true },
-    email: { type: String, unique: true, required: true },
-    password: { type: String, required: true },
-    points: { type: Number, default: 500 },
-    currentSkin: { type: String, default: 'sphere' },
-    unlockedSkins: { type: [String], default: ['sphere'] }
+// Esquema de Usuario (Puntos y Skins)
+const User = mongoose.model('User', new mongoose.Schema({
+    username: String,
+    email: { type: String, unique: true },
+    password: String,
+    points: { type: Number, default: 0 },
+    currentSkin: { type: String, default: 'circle' }
+}));
+
+// Rutas de API simplificadas
+app.post('/api/auth/login', async (req, res) => {
+    const user = await User.findOne({ email: req.body.email });
+    if (user) res.json({ user });
+    else res.status(400).send();
 });
-const User = mongoose.model('User', UserSchema);
 
-// --- ENDPOINTS DE AUTENTICACIÓN ---
-app.post('/api/auth/register', async (req, res) => {
-    try {
-        const { username, email, password } = req.body;
-        const hashed = await bcrypt.hash(password, 10);
-        const user = await User.create({ username, email, password: hashed });
+// Manejo de la lógica Battle Royale (100 jugadores)
+let players = new Map();
+io.on("connection", (socket) => {
+    socket.on("join", (userData) => {
+        players.set(socket.id, {
+            id: socket.id,
+            x: 2500, y: 2500,
+            hp: 3,
+            skin: userData.currentSkin || 'circle'
+        });
+    });
+
+    socket.on("input", (data) => {
+        const p = players.get(socket.id);
+        if (p) { p.x += data.x; p.y += data.y; }
+    });
+
+    socket.on("disconnect", () => players.delete(socket.id));
+});
+
+// Loop de red a 30fps
+setInterval(() => io.emit("tick", Array.from(players.values())), 33);
+
+server.listen(process.env.PORT || 3000);        const user = await User.create({ username, email, password: hashed });
         const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET || 'GS2026');
         res.json({ token, user: { username, points: 500, currentSkin: 'sphere' } });
     } catch (e) { res.status(400).json({ error: "Datos duplicados o inválidos" }); }
