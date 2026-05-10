@@ -19,101 +19,54 @@ mongoose.connect(process.env.MONGODB_URI)
     .then(() => console.log("💎 Base de Datos Hyper-Core Conectada"))
     .catch(err => console.error("❌ Fallo en Nucleo DB:", err));
 
-// --- MODELO DE USUARIO ---
-const userSchema = new mongoose.Schema({
-    username: { type: String, unique: true, required: true },
-    password: { type: String, required: true },
+// MODELO DE USUARIO PARA MONETIZACIÓN
+const User = mongoose.model('User', new mongoose.Schema({
+    username: { type: String, unique: true },
+    password: { type: String },
     coins: { type: Number, default: 1000 },
-    xp: { type: Number, default: 0 },
-    level: { type: Number, default: 1 },
-    skins: { type: Array, default: ['default'] }
-});
-const User = mongoose.model('User', userSchema);
+    skins: { type: Array, default: ['#6366f1'] }, // Colores comprados
+    activeSkin: { type: String, default: '#6366f1' }
+}));
 
-// --- RUTAS DE AUTENTICACIÓN ---
-app.post('/api/register', async (req, res) => {
-    try {
-        const { username, password } = req.body;
-        const hashedPassword = await bcrypt.hash(password, 10);
-        const newUser = new User({ username, password: hashedPassword });
-        await newUser.save();
-        res.status(201).send({ message: "Usuario Creado" });
-    } catch (e) { res.status(400).send({ error: "El usuario ya existe" }); }
-});
-
-app.post('/api/login', async (req, res) => {
-    const { username, password } = req.body;
+// API: COMPRA DE SKINS (MONETIZACIÓN)
+app.post('/api/buy-skin', async (req, res) => {
+    const { username, skinColor, price } = req.body;
     const user = await User.findOne({ username });
-    if (user && await bcrypt.compare(password, user.password)) {
-        const token = jwt.sign({ id: user._id }, 'SECRET_KEY_2026');
-        res.json({ token, user: { username, coins: user.coins, level: user.level } });
-    } else {
-        res.status(401).send({ error: "Credenciales Incorrectas" });
+    if (user && user.coins >= price) {
+        user.coins -= price;
+        user.skins.push(skinColor);
+        user.activeSkin = skinColor;
+        await user.save();
+        return res.json({ success: true, coins: user.coins });
     }
+    res.status(400).json({ success: false, error: "Fondos insuficientes" });
 });
 
-// --- LÓGICA DE LA ARENA (SOCKETS) ---
-let activePlayers = {};
-
+// LÓGICA DE LA ARENA
+let players = {};
 io.on('connection', (socket) => {
-    console.log('📡 Nuevo Enlace Neuronal:', socket.id);
-
-    socket.on('joinArena', (userData) => {
-        activePlayers[socket.id] = {
+    socket.on('joinArena', async (data) => {
+        const user = await User.findOne({ username: data.username }) || { activeSkin: '#6366f1', coins: 1000 };
+        players[socket.id] = {
             id: socket.id,
-            username: userData.username || "Guest",
-            x: Math.random() * 1000,
-            y: Math.random() * 1000,
-            lives: 3,
-            level: 1,
-            color: userData.color || '#6366f1',
+            username: data.username,
+            x: Math.random() * 800, y: Math.random() * 600,
+            lives: 3, level: 1,
+            color: user.activeSkin,
             isDashing: false
         };
-        io.emit('syncArena', activePlayers);
+        io.emit('sync', players);
     });
 
     socket.on('playerMove', (data) => {
-        if (activePlayers[socket.id]) {
-            Object.assign(activePlayers[socket.id], data);
-            socket.broadcast.emit('updatePos', activePlayers[socket.id]);
+        if (players[socket.id]) {
+            Object.assign(players[socket.id], data);
+            socket.broadcast.emit('update', players[socket.id]);
         }
     });
 
-    socket.on('emitPulse', () => {
-        const attacker = activePlayers[socket.id];
-        if (!attacker) return;
-
-        const pulseRadius = 60 + (attacker.level * 40);
-
-        for (let targetId in activePlayers) {
-            if (targetId === socket.id) continue;
-            const target = activePlayers[targetId];
-            const dist = Math.hypot(attacker.x - target.x, attacker.y - target.y);
-
-            if (dist < pulseRadius && !target.isDashing) {
-                target.lives -= 1;
-                if (target.lives <= 0) {
-                    attacker.level = Math.min(attacker.level + 1, 6);
-                    // Premiar al ganador en DB
-                    updateUserStats(attacker.username, 50, 100); // +50 coins, +100 xp
-                    io.to(targetId).emit('eliminated');
-                    delete activePlayers[targetId];
-                }
-            }
-        }
-        io.emit('visualPulse', { x: attacker.x, y: attacker.y, radius: pulseRadius, color: attacker.color });
-        io.emit('syncArena', activePlayers);
-    });
-
-    socket.on('disconnect', () => {
-        delete activePlayers[socket.id];
-        io.emit('syncArena', activePlayers);
-    });
+    socket.on('disconnect', () => { delete players[socket.id]; io.emit('sync', players); });
 });
-
-async function updateUserStats(username, coinsToAdd, xpToAdd) {
-    await User.findOneAndUpdate({ username }, { $inc: { coins: coinsToAdd, xp: xpToAdd } });
-}
 
 server.listen(10000, () => console.log("🚀 SERVER 2026 ONLINE - PUERTO 10000"));
 server.listen(PORT, () => console.log(`🚀 HG Studios en puerto ${PORT}`));
