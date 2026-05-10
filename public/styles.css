@@ -56,6 +56,7 @@ input { border: 1px solid #3c4a78; background: rgba(12,15,26,.9); color: #f1f5ff
 .hp-bars i { width: 34px; height: 12px; border-radius: 5px; background: linear-gradient(90deg, #56ffb8, #6df7ff); border: 1px solid #3f6f70; }
 .touch-btn { position: fixed; right: 18px; bottom: 60px; width: 86px; height: 86px; border-radius: 50%; border: 1px solid #4a4f8f; background: radial-gradient(circle, rgba(136,217,255,.35), rgba(90,70,168,.3)); color: #eef4ff; font-weight: 800; letter-spacing: .6px; z-index: 4; display: none; }
 .touch-btn.dash { right: 120px; bottom: 86px; width: 76px; height: 76px; background: radial-gradient(circle, rgba(255,201,138,.35), rgba(154,98,70,.3)); }
+.touch-btn.disabled { opacity: 0.45; filter: grayscale(0.2); border-color: #6b6f86; }
 .touch-move { position: fixed; left: 18px; bottom: 56px; width: 130px; height: 130px; border-radius: 50%; border: 1px solid #42517c; background: rgba(17, 23, 41, 0.42); z-index: 4; display: none; }
 .touch-stick { width: 58px; height: 58px; border-radius: 50%; background: radial-gradient(circle, rgba(150,235,255,.7), rgba(96,157,255,.45)); border: 1px solid #5a78b8; position: absolute; left: 36px; top: 36px; }
 
