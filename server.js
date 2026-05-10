@@ -3,38 +3,123 @@ const express = require("express");
 const http = require("http");
 const { Server } = require("socket.io");
 const mongoose = require("mongoose");
+const bcrypt = require("bcryptjs");
+const jwt = require("jsonwebtoken");
 require("dotenv").config();
 
 const app = express();
 const server = http.createServer(app);
-const io = new Server(server);
-
-// CORRECCIÓN CRÍTICA: Definir la ruta de la carpeta pública correctamente
-const publicPath = path.join(__dirname, 'public');
-app.use(express.static(publicPath));
-app.use(express.json());
-
-// Conexión a MongoDB
-mongoose.connect(process.env.MONGODB_URI)
-    .then(() => console.log("💎 NÚCLEO DE DATOS 2026 ONLINE"))
-    .catch(err => console.error("❌ ERROR DB:", err));
-
-// Esquema de Usuario (Puntos y Skins)
-const User = mongoose.model('User', new mongoose.Schema({
-    username: String,
-    email: { type: String, unique: true },
-    password: String,
-    points: { type: Number, default: 0 },
-    currentSkin: { type: String, default: 'circle' }
-}));
-
-// Rutas de API simplificadas
-app.post('/api/auth/login', async (req, res) => {
-    const user = await User.findOne({ email: req.body.email });
-    if (user) res.json({ user });
-    else res.status(400).send();
+const io = new Server(server, {
+  cors: { origin: "*" },
+  pingTimeout: 60000,
 });
 
+const PORT = process.env.PORT || 3000;
+const JWT_SECRET = process.env.JWT_SECRET || "dev-secret";
+const TICK_RATE = 30;
+const MAP_SIZE = 5000;
+const START_ZONE_RADIUS = 2200;
+const ROUND_START_SECONDS = 15;
+const MAX_PLAYERS = 100;
+
+// Middleware y estáticos
+app.use(express.json());
+app.use(express.static(path.join(__dirname, "public")));
+
+// Conexión DB
+mongoose.connect(process.env.MONGODB_URI)
+    .then(() => console.log("💎 NÚCLEO DE DATOS 2026 CONECTADO"))
+    .catch(err => console.error("❌ FALLO CRÍTICO EN DB:", err));
+
+const userSchema = new mongoose.Schema({
+    username: { type: String, unique: true, required: true },
+    email: { type: String, unique: true, required: true },
+    password: { type: String, required: true },
+    coins: { type: Number, default: 0 },
+    unlockedSkins: { type: [String], default: ["circle"] },
+    currentSkin: { type: String, default: "circle" }
+});
+const User = mongoose.model("User", userSchema);
+
+// Rutas de Auth
+app.post("/api/register", async (req, res) => {
+    try {
+        const { username, email, password } = req.body;
+        const hashed = await bcrypt.hash(password, 10);
+        const user = await User.create({ username, email, password: hashed });
+        const token = jwt.sign({ id: user._id }, JWT_SECRET);
+        res.json({ token, user: { username: user.username, coins: user.coins, currentSkin: user.currentSkin } });
+    } catch (e) { res.status(400).json({ error: "Error en registro" }); }
+});
+
+app.post("/api/login", async (req, res) => {
+    const { email, password } = req.body;
+    const user = await User.findOne({ email });
+    if (!user || !(await bcrypt.compare(password, user.password))) return res.status(401).json({ error: "Fallo" });
+    const token = jwt.sign({ id: user._id }, JWT_SECRET);
+    res.json({ token, user: { username: user.username, coins: user.coins, currentSkin: user.currentSkin } });
+});
+
+// Lógica de salas y motor de juego
+const rooms = new Map();
+
+function createRoom(id) {
+    return {
+        id,
+        status: "LOBBY",
+        players: new Map(),
+        timer: ROUND_START_SECONDS,
+        zone: { x: MAP_SIZE / 2, y: MAP_SIZE / 2, radius: START_ZONE_RADIUS }
+    };
+}
+
+io.on("connection", (socket) => {
+    socket.on("join_room", async (data) => {
+        let room = rooms.get("main_room") || createRoom("main_room");
+        rooms.set("main_room", room);
+        
+        const player = {
+            id: socket.id,
+            username: data.username,
+            x: Math.random() * MAP_SIZE,
+            y: Math.random() * MAP_SIZE,
+            skin: data.skin || "circle",
+            hp: 3,
+            lastDash: 0,
+            lastPulse: 0
+        };
+        
+        room.players.set(socket.id, player);
+        socket.join(room.id);
+        socket.emit("joined", { roomId: room.id, mapSize: MAP_SIZE });
+    });
+
+    socket.on("input", (input) => {
+        const room = rooms.get("main_room");
+        if (!room) return;
+        const p = room.players.get(socket.id);
+        if (p) {
+            const speed = 7;
+            if (input.up) p.y -= speed;
+            if (input.down) p.y += speed;
+            if (input.left) p.x -= speed;
+            if (input.right) p.x += speed;
+        }
+    });
+
+    socket.on("disconnect", () => {
+        const room = rooms.get("main_room");
+        if (room) room.players.delete(socket.id);
+    });
+});
+
+setInterval(() => {
+    rooms.forEach(room => {
+        io.to(room.id).emit("tick", Array.from(room.players.values()));
+    });
+}, 1000 / TICK_RATE);
+
+server.listen(PORT, () => console.log(`🚀 Servidor en puerto ${PORT}`));
 // Manejo de la lógica Battle Royale (100 jugadores)
 let players = new Map();
 io.on("connection", (socket) => {
