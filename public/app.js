@@ -1,40 +1,65 @@
-const qs = (s) => document.querySelector(s);
-const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
-const screens = {
-  intro: qs("#introScreen"),
-  auth: qs("#authScreen"),
-  lobby: qs("#lobbyScreen"),
-  game: qs("#gameScreen")
-};
-const introCanvas = qs("#introCanvas");
-const gameCanvas = qs("#gameCanvas");
-const avatarCanvas = qs("#avatarCanvas");
-const authForm = qs("#authForm");
-const tabLogin = qs("#tabLogin");
-const tabRegister = qs("#tabRegister");
-const usernameInput = qs("#usernameInput");
-const emailInput = qs("#emailInput");
-const passwordInput = qs("#passwordInput");
-const authMsg = qs("#authMsg");
-const welcomeUser = qs("#welcomeUser");
-const coinsLabel = qs("#coinsLabel");
-const roomsList = qs("#roomsList");
-const lobbyMsg = qs("#lobbyMsg");
-const hpBars = qs("#hpBars");
-const gameTopLeft = qs("#gameTopLeft");
-const gameTopRight = qs("#gameTopRight");
-const cooldownPulse = qs("#cooldownPulse");
-const cooldownDash = qs("#cooldownDash");
-const touchPulse = qs("#touchPulse");
-const touchDash = qs("#touchDash");
-const touchMove = qs("#touchMove");
-const touchStick = qs("#touchStick");
+const socket = io();
+const canvas = document.getElementById("gameCanvas");
+const ctx = canvas.getContext("2d");
 
-let mode = "login";
-let token = localStorage.getItem("token") || "";
+let players = [];
 let me = null;
-let socket = null;
-let currentRoomId = null;
+let mapSize = 5000;
+
+const keys = { up: false, down: false, left: false, right: false };
+
+function joinGame() {
+  document.getElementById("authScreen").classList.remove("active");
+  document.getElementById("gameScreen").classList.add("active");
+  socket.emit("join_room", { username: "Piloto_" + Math.floor(Math.random()*999) });
+}
+
+window.onkeydown = (e) => {
+  if (e.key === "w") keys.up = true;
+  if (e.key === "s") keys.down = true;
+  if (e.key === "a") keys.left = true;
+  if (e.key === "d") keys.right = true;
+  socket.emit("input", keys);
+};
+
+window.onkeyup = (e) => {
+  if (e.key === "w") keys.up = false;
+  if (e.key === "s") keys.down = false;
+  if (e.key === "a") keys.left = false;
+  if (e.key === "d") keys.right = false;
+  socket.emit("input", keys);
+};
+
+socket.on("tick", (data) => {
+  players = data;
+  me = players.find(p => p.id === socket.id);
+});
+
+function draw() {
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  if (!me) return requestAnimationFrame(draw);
+
+  const camX = canvas.width / 2 - me.x;
+  const camY = canvas.height / 2 - me.y;
+
+  // Mapa
+  ctx.strokeStyle = "#333";
+  ctx.strokeRect(camX, camY, mapSize, mapSize);
+
+  // Jugadores
+  players.forEach(p => {
+    ctx.fillStyle = (p.id === socket.id) ? "#00f3ff" : "#ff0044";
+    ctx.beginPath();
+    ctx.arc(p.x + camX, p.y + camY, 15, 0, Math.PI * 2);
+    ctx.fill();
+  });
+
+  requestAnimationFrame(draw);
+}
+draw();let currentRoomId = null;
 let mapSize = 5000;
 let roomState = null;
 
