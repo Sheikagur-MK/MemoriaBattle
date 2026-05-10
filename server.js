@@ -20,6 +20,8 @@ const ZONE_INTERVAL_MS = 120000;
 const ZONE_SHRINK_FACTOR = 0.84;
 const ROUND_START_SECONDS = 15;
 const MAX_PLAYERS = 100;
+const DASH_COOLDOWN_MS = 5000;
+const PULSE_COOLDOWN_MS = 5000;
 
 // --- CONEXIÓN A BASE DE DATOS ---
 mongoose.connect(process.env.MONGODB_URI)
@@ -131,6 +133,7 @@ function playerState(username) {
     hpBars: 3,
     alive: true,
     dashCooldownUntil: 0,
+    pulseCooldownUntil: 0,
     dashInvulnUntil: 0,
     pulseUntil: 0,
     wantsPulse: false,
@@ -185,6 +188,7 @@ function startRound(room) {
     p.hpBars = 3;
     p.alive = true;
     p.dashCooldownUntil = 0;
+    p.pulseCooldownUntil = 0;
     p.dashInvulnUntil = 0;
     p.pulseUntil = 0;
   }
@@ -226,7 +230,6 @@ function maybeTransitionRoom(room) {
 
 function updateRoom(room, dt) {
   maybeTransitionRoom(room);
-  if (room.status !== "running") return;
 
   for (const p of room.players.values()) {
     if (!p.alive) continue;
@@ -250,7 +253,7 @@ function updateRoom(room, dt) {
     }
 
     if (p.input.dash && Date.now() > p.dashCooldownUntil) {
-      p.dashCooldownUntil = Date.now() + 2200;
+      p.dashCooldownUntil = Date.now() + DASH_COOLDOWN_MS;
       p.dashInvulnUntil = Date.now() + 320;
       const dashX = dx === 0 && dy === 0 ? p.lastMove.x : ndx;
       const dashY = dx === 0 && dy === 0 ? p.lastMove.y : ndy;
@@ -264,7 +267,7 @@ function updateRoom(room, dt) {
     p.y = Math.max(0, Math.min(MAP_SIZE, p.y));
 
     const dZone = Math.hypot(p.x - room.zone.x, p.y - room.zone.y);
-    if (dZone > room.zone.radius) {
+    if (room.status === "running" && dZone > room.zone.radius) {
       if (Math.random() < 0.05) {
         p.hpBars -= 1;
         if (p.hpBars <= 0) {
@@ -278,6 +281,9 @@ function updateRoom(room, dt) {
   for (const p of room.players.values()) {
     if (!p.alive || !p.wantsPulse) continue;
     p.wantsPulse = false;
+    if (room.status !== "running") continue;
+    if (Date.now() < p.pulseCooldownUntil) continue;
+    p.pulseCooldownUntil = Date.now() + PULSE_COOLDOWN_MS;
     p.pulseUntil = Date.now() + 320;
     const pulseRange = 135;
     for (const enemy of room.players.values()) {
@@ -385,3 +391,4 @@ app.get("*", (req, res) => {
 });
 
 server.listen(PORT, () => console.log(`SERVIDOR 2026 CORRIENDO EN PUERTO ${PORT}`));
+
