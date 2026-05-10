@@ -1,4 +1,3 @@
-
 const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
@@ -6,21 +5,24 @@ const path = require('path');
 
 const app = express();
 const server = http.createServer(app);
-const io = new Server(server);
+const io = new Server(server, {
+    cors: { origin: "*" } // Permite conexiones de cualquier lugar (PC/Móvil)
+});
 
-app.use(express.static(path.join(__dirname, 'public')));
+// ESTO ES CLAVE: Asegura que Render encuentre tus archivos
+const publicPath = path.join(__dirname, 'public');
+app.use(express.static(publicPath));
 
 let players = {};
 
 io.on('connection', (socket) => {
-    console.log('Jugador conectado:', socket.id);
+    console.log('Nuevo jugador:', socket.id);
     
     players[socket.id] = {
-        x: Math.random() * 800,
-        y: Math.random() * 600,
+        x: 400,
+        y: 300,
         color: `hsl(${Math.random() * 360}, 70%, 50%)`,
-        shape: 'circle',
-        score: 0
+        size: 20
     };
 
     io.emit('updatePlayers', players);
@@ -29,7 +31,7 @@ io.on('connection', (socket) => {
         if (players[socket.id]) {
             players[socket.id].x = data.x;
             players[socket.id].y = data.y;
-            socket.broadcast.emit('playerMoved', { id: socket.id, x: data.x, y: data.y });
+            io.emit('updatePlayers', players); // Sincronización total
         }
     });
 
@@ -40,4 +42,6 @@ io.on('connection', (socket) => {
 });
 
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => console.log(`Servidor en puerto ${PORT}`));
+server.listen(PORT, '0.0.0.0', () => {
+    console.log(`Servidor corriendo en http://0.0.0.0:${PORT}`);
+});
