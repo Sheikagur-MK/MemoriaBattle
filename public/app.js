@@ -39,8 +39,12 @@ const keys = { up: false, down: false, left: false, right: false, dash: false, p
 const viewTrail = new Map();
 const joystick = { active: false, id: null, x: 0, y: 0, radius: 48 };
 const SKILL_COOLDOWN_MS = 5000;
+const CAMERA_ZOOM = 0.68;
 let lastDashAt = 0;
 let lastPulseAt = 0;
+const renderedPlayers = new Map();
+let analogX = 0;
+let analogY = 0;
 
 function show(screenName) {
   Object.values(screens).forEach((s) => s.classList.remove("active"));
@@ -206,10 +210,12 @@ function tryPulse() {
 
 function joystickApply(nx, ny) {
   const dead = 0.22;
-  keys.left = nx < -dead;
-  keys.right = nx > dead;
-  keys.up = ny < -dead;
-  keys.down = ny > dead;
+  analogX = Math.abs(nx) < dead ? 0 : nx;
+  analogY = Math.abs(ny) < dead ? 0 : ny;
+  keys.left = analogX < -dead;
+  keys.right = analogX > dead;
+  keys.up = analogY < -dead;
+  keys.down = analogY > dead;
 }
 
 if (touchMove && touchStick) {
@@ -286,7 +292,11 @@ if (touchMove && touchStick) {
 
 function sendInputLoop() {
   if (socket && socket.connected && currentRoomId) {
-    socket.emit("input", keys);
+    const mx = (keys.right ? 1 : 0) - (keys.left ? 1 : 0);
+    const my = (keys.down ? 1 : 0) - (keys.up ? 1 : 0);
+    const moveX = analogX !== 0 ? analogX : mx;
+    const moveY = analogY !== 0 ? analogY : my;
+    socket.emit("input", { ...keys, moveX, moveY });
     keys.pulse = false;
     keys.dash = false;
   }
@@ -343,11 +353,24 @@ function drawGame() {
 
   const players = roomState.players || [];
   const mePlayer = players.find((p) => p.username === me.username);
+  for (const p of players) {
+    const prev = renderedPlayers.get(p.username) || { x: p.x, y: p.y };
+    prev.x += (p.x - prev.x) * 0.35;
+    prev.y += (p.y - prev.y) * 0.35;
+    prev.alive = p.alive;
+    prev.pulsing = p.pulsing;
+    prev.username = p.username;
+    prev.hpBars = p.hpBars;
+    renderedPlayers.set(p.username, prev);
+  }
   const cam = {
-    x: mePlayer ? mePlayer.x : mapSize / 2,
-    y: mePlayer ? mePlayer.y : mapSize / 2
+    x: mePlayer ? (renderedPlayers.get(me.username)?.x || mePlayer.x) : mapSize / 2,
+    y: mePlayer ? (renderedPlayers.get(me.username)?.y || mePlayer.y) : mapSize / 2
   };
-  const view = { left: cam.x - w / 2, top: cam.y - h / 2 };
+  const viewW = w / CAMERA_ZOOM;
+  const viewH = h / CAMERA_ZOOM;
+  const view = { left: cam.x - viewW / 2, top: cam.y - viewH / 2 };
+  const toScreen = (wx, wy) => ({ x: (wx - view.left) * CAMERA_ZOOM, y: (wy - view.top) * CAMERA_ZOOM });
 
   ctx.fillStyle = "#090e17";
   ctx.fillRect(0, 0, w, h);
@@ -359,14 +382,16 @@ function drawGame() {
   if (zone) {
     ctx.strokeStyle = "rgba(255,102,142,.55)";
     ctx.lineWidth = 4;
+    const pz = toScreen(zone.x, zone.y);
     ctx.beginPath();
-    ctx.arc(zone.x - view.left, zone.y - view.top, zone.radius, 0, Math.PI * 2);
+    ctx.arc(pz.x, pz.y, zone.radius * CAMERA_ZOOM, 0, Math.PI * 2);
     ctx.stroke();
   }
 
-  for (const p of players) {
-    const x = p.x - view.left;
-    const y = p.y - view.top;
+  for (const p of renderedPlayers.values()) {
+    const pos = toScreen(p.x, p.y);
+    const x = pos.x;
+    const y = pos.y;
     if (x < -120 || y < -120 || x > w + 120 || y > h + 120) continue;
     ctx.fillStyle = p.username === me.username ? "#8cf6ff" : "#d3deff";
     if (!p.alive) ctx.fillStyle = "#666f90";
@@ -384,25 +409,27 @@ function drawGame() {
       const ty = y - Math.sin(tt) * 5;
       ctx.fillStyle = "rgba(123,214,255,0.35)";
       ctx.beginPath();
-      ctx.arc(tx, ty, 9, 0, Math.PI * 2);
+      ctx.arc(tx, ty, 9 * CAMERA_ZOOM, 0, Math.PI * 2);
       ctx.fill();
       ctx.fillStyle = p.username === me.username ? "#8cf6ff" : "#d3deff";
     }
     ctx.beginPath();
-    ctx.arc(x, y, 12, 0, Math.PI * 2);
+    const bob = moving ? Math.sin(performance.now() / 120) * 1.8 : 0;
+    const radius = (12 + bob) * CAMERA_ZOOM;
+    ctx.arc(x, y, radius, 0, Math.PI * 2);
     ctx.fill();
     if (moving && p.alive) {
       ctx.strokeStyle = "rgba(170, 233, 255, 0.65)";
       ctx.lineWidth = 2;
       ctx.beginPath();
-      ctx.arc(x, y, 15 + Math.sin(performance.now() / 90) * 1.2, 0, Math.PI * 2);
+      ctx.arc(x, y, (15 + Math.sin(performance.now() / 90) * 1.2) * CAMERA_ZOOM, 0, Math.PI * 2);
       ctx.stroke();
     }
     if (p.pulsing) {
       ctx.strokeStyle = "rgba(120,237,255,.65)";
       ctx.lineWidth = 3;
       ctx.beginPath();
-      ctx.arc(x, y, 42, 0, Math.PI * 2);
+      ctx.arc(x, y, 42 * CAMERA_ZOOM, 0, Math.PI * 2);
       ctx.stroke();
     }
     ctx.fillStyle = "#dce6ff";
@@ -411,6 +438,12 @@ function drawGame() {
   }
 
   const alive = players.filter((p) => p.alive).length;
+  const dashLeft = Math.max(0, SKILL_COOLDOWN_MS - (Date.now() - lastDashAt));
+  const pulseLeft = Math.max(0, SKILL_COOLDOWN_MS - (Date.now() - lastPulseAt));
+  touchDash.classList.toggle("disabled", dashLeft > 0);
+  touchPulse.classList.toggle("disabled", pulseLeft > 0);
+  touchDash.textContent = dashLeft > 0 ? `DASH ${Math.ceil(dashLeft / 1000)}` : "DASH";
+  touchPulse.textContent = pulseLeft > 0 ? `PULSE ${Math.ceil(pulseLeft / 1000)}` : "PULSE";
   gameTopLeft.textContent = `${roomState.summary?.id || ""} | ${roomState.summary?.status || ""}`;
   gameTopRight.textContent = `Vivos: ${alive}`;
   hpBars.innerHTML = "";
