@@ -22,6 +22,10 @@ const lobbyMsg = qs("#lobbyMsg");
 const hpBars = qs("#hpBars");
 const gameTopLeft = qs("#gameTopLeft");
 const gameTopRight = qs("#gameTopRight");
+const touchPulse = qs("#touchPulse");
+const touchDash = qs("#touchDash");
+const touchMove = qs("#touchMove");
+const touchStick = qs("#touchStick");
 
 let mode = "login";
 let token = localStorage.getItem("token") || "";
@@ -32,6 +36,9 @@ let mapSize = 5000;
 let roomState = null;
 
 const keys = { up: false, down: false, left: false, right: false, dash: false, pulse: false };
+const viewTrail = new Map();
+const localPulseFx = [];
+const joystick = { active: false, id: null, x: 0, y: 0, radius: 48 };
 
 function show(screenName) {
   Object.values(screens).forEach((s) => s.classList.remove("active"));
@@ -142,7 +149,7 @@ qs("#btnPrivate").onclick = () => {
   socket.emit("join_private", { code });
 };
 qs("#btnTutorial").onclick = () => {
-  lobbyMsg.textContent = "Tutorial: usa WASD para moverte, Espacio para pulse, Shift para dash.";
+  lobbyMsg.textContent = "Tutorial: usa WASD/flechas para moverte, Espacio para pulse y Shift para dash.";
 };
 qs("#btnOptions").onclick = () => { lobbyMsg.textContent = "Opciones: en siguiente iteracion agregamos sliders de audio/video."; };
 qs("#btnStore").onclick = () => { lobbyMsg.textContent = "Tienda conectable a MongoDB para skins y cosmeticos."; };
@@ -150,12 +157,16 @@ qs("#backLobbyBtn").onclick = () => show("lobby");
 
 window.addEventListener("keydown", (e) => {
   const k = e.key.toLowerCase();
+  if (["arrowup", "arrowdown", "arrowleft", "arrowright", " "].includes(k)) e.preventDefault();
   if (k === "w" || k === "arrowup") keys.up = true;
   if (k === "s" || k === "arrowdown") keys.down = true;
   if (k === "a" || k === "arrowleft") keys.left = true;
   if (k === "d" || k === "arrowright") keys.right = true;
-  if (k === "shift") keys.dash = true;
-  if (k === " ") keys.pulse = true;
+  if (e.code === "ShiftLeft" || e.code === "ShiftRight") keys.dash = true;
+  if (e.code === "Space") {
+    keys.pulse = true;
+    localPulseFx.push({ t: performance.now(), username: me?.username || "" });
+  }
 });
 window.addEventListener("keyup", (e) => {
   const k = e.key.toLowerCase();
@@ -163,15 +174,74 @@ window.addEventListener("keyup", (e) => {
   if (k === "s" || k === "arrowdown") keys.down = false;
   if (k === "a" || k === "arrowleft") keys.left = false;
   if (k === "d" || k === "arrowright") keys.right = false;
-  if (k === "shift") keys.dash = false;
+  if (e.code === "ShiftLeft" || e.code === "ShiftRight") keys.dash = false;
 });
-qs("#touchPulse").addEventListener("touchstart", () => { keys.pulse = true; }, { passive: true });
-qs("#touchPulse").addEventListener("click", () => { keys.pulse = true; });
+touchPulse.addEventListener("touchstart", (e) => {
+  e.preventDefault();
+  keys.pulse = true;
+  localPulseFx.push({ t: performance.now(), username: me?.username || "" });
+}, { passive: false });
+touchPulse.addEventListener("click", (e) => {
+  e.preventDefault();
+  keys.pulse = true;
+  localPulseFx.push({ t: performance.now(), username: me?.username || "" });
+});
+touchDash.addEventListener("touchstart", (e) => { e.preventDefault(); keys.dash = true; }, { passive: false });
+touchDash.addEventListener("touchend", (e) => { e.preventDefault(); keys.dash = false; }, { passive: false });
+touchDash.addEventListener("click", (e) => {
+  e.preventDefault();
+  keys.dash = true;
+  setTimeout(() => { keys.dash = false; }, 70);
+});
+
+function joystickApply(nx, ny) {
+  const dead = 0.22;
+  keys.left = nx < -dead;
+  keys.right = nx > dead;
+  keys.up = ny < -dead;
+  keys.down = ny > dead;
+}
+
+if (touchMove && touchStick) {
+  touchMove.addEventListener("pointerdown", (e) => {
+    joystick.active = true;
+    joystick.id = e.pointerId;
+    touchMove.setPointerCapture(e.pointerId);
+  });
+  touchMove.addEventListener("pointermove", (e) => {
+    if (!joystick.active || e.pointerId !== joystick.id) return;
+    const rect = touchMove.getBoundingClientRect();
+    const cx = rect.width / 2;
+    const cy = rect.height / 2;
+    let dx = e.clientX - rect.left - cx;
+    let dy = e.clientY - rect.top - cy;
+    const mag = Math.hypot(dx, dy) || 1;
+    if (mag > joystick.radius) {
+      dx = (dx / mag) * joystick.radius;
+      dy = (dy / mag) * joystick.radius;
+    }
+    touchStick.style.left = `${cx - touchStick.offsetWidth / 2 + dx}px`;
+    touchStick.style.top = `${cy - touchStick.offsetHeight / 2 + dy}px`;
+    joystickApply(dx / joystick.radius, dy / joystick.radius);
+  });
+  const resetStick = (e) => {
+    if (!joystick.active || e.pointerId !== joystick.id) return;
+    joystick.active = false;
+    joystick.id = null;
+    const rect = touchMove.getBoundingClientRect();
+    touchStick.style.left = `${rect.width / 2 - touchStick.offsetWidth / 2}px`;
+    touchStick.style.top = `${rect.height / 2 - touchStick.offsetHeight / 2}px`;
+    joystickApply(0, 0);
+  };
+  touchMove.addEventListener("pointerup", resetStick);
+  touchMove.addEventListener("pointercancel", resetStick);
+}
 
 function sendInputLoop() {
   if (socket && socket.connected && currentRoomId) {
     socket.emit("input", keys);
     keys.pulse = false;
+    keys.dash = false;
   }
   setTimeout(sendInputLoop, 33);
 }
@@ -253,13 +323,43 @@ function drawGame() {
     if (x < -120 || y < -120 || x > w + 120 || y > h + 120) continue;
     ctx.fillStyle = p.username === me.username ? "#8cf6ff" : "#d3deff";
     if (!p.alive) ctx.fillStyle = "#666f90";
+    const prev = viewTrail.get(p.username);
+    let moving = false;
+    if (prev) {
+      const md = Math.hypot(x - prev.x, y - prev.y);
+      moving = md > 0.55;
+    }
+    viewTrail.set(p.username, { x, y });
+
+    if (moving && p.alive) {
+      const tt = performance.now() / 120;
+      const tx = x - Math.cos(tt) * 5;
+      const ty = y - Math.sin(tt) * 5;
+      ctx.fillStyle = "rgba(123,214,255,0.35)";
+      ctx.beginPath();
+      ctx.arc(tx, ty, 9, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = p.username === me.username ? "#8cf6ff" : "#d3deff";
+    }
     ctx.beginPath();
     ctx.arc(x, y, 12, 0, Math.PI * 2);
     ctx.fill();
+    if (moving && p.alive) {
+      ctx.strokeStyle = "rgba(170, 233, 255, 0.65)";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(x, y, 15 + Math.sin(performance.now() / 90) * 1.2, 0, Math.PI * 2);
+      ctx.stroke();
+    }
     if (p.pulsing) {
       ctx.strokeStyle = "rgba(120,237,255,.65)";
+      ctx.lineWidth = 3;
       ctx.beginPath();
       ctx.arc(x, y, 42, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.strokeStyle = "rgba(120,237,255,.35)";
+      ctx.beginPath();
+      ctx.arc(x, y, 62, 0, Math.PI * 2);
       ctx.stroke();
     }
     ctx.fillStyle = "#dce6ff";
@@ -268,6 +368,23 @@ function drawGame() {
   }
 
   const alive = players.filter((p) => p.alive).length;
+  for (let i = localPulseFx.length - 1; i >= 0; i -= 1) {
+    const fx = localPulseFx[i];
+    const age = (performance.now() - fx.t) / 400;
+    if (age >= 1) {
+      localPulseFx.splice(i, 1);
+      continue;
+    }
+    const owner = players.find((p) => p.username === fx.username);
+    if (!owner) continue;
+    const x = owner.x - view.left;
+    const y = owner.y - view.top;
+    ctx.strokeStyle = `rgba(145,241,255,${1 - age})`;
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.arc(x, y, 18 + age * 130, 0, Math.PI * 2);
+    ctx.stroke();
+  }
   gameTopLeft.textContent = `${roomState.summary?.id || ""} | ${roomState.summary?.status || ""}`;
   gameTopRight.textContent = `Vivos: ${alive}`;
   hpBars.innerHTML = "";
