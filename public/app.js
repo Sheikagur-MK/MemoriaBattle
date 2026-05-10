@@ -1,4 +1,5 @@
 const qs = (s) => document.querySelector(s);
+const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
 const screens = {
   intro: qs("#introScreen"),
   auth: qs("#authScreen"),
@@ -22,6 +23,8 @@ const lobbyMsg = qs("#lobbyMsg");
 const hpBars = qs("#hpBars");
 const gameTopLeft = qs("#gameTopLeft");
 const gameTopRight = qs("#gameTopRight");
+const cooldownPulse = qs("#cooldownPulse");
+const cooldownDash = qs("#cooldownDash");
 const touchPulse = qs("#touchPulse");
 const touchDash = qs("#touchDash");
 const touchMove = qs("#touchMove");
@@ -43,6 +46,7 @@ const CAMERA_ZOOM = 0.68;
 let lastDashAt = 0;
 let lastPulseAt = 0;
 const renderedPlayers = new Map();
+const organicState = new Map();
 let analogX = 0;
 let analogY = 0;
 
@@ -354,7 +358,9 @@ function drawGame() {
   const players = roomState.players || [];
   const mePlayer = players.find((p) => p.username === me.username);
   for (const p of players) {
-    const prev = renderedPlayers.get(p.username) || { x: p.x, y: p.y };
+    const prev = renderedPlayers.get(p.username) || { x: p.x, y: p.y, lx: p.x, ly: p.y };
+    prev.lx = prev.x;
+    prev.ly = prev.y;
     prev.x += (p.x - prev.x) * 0.35;
     prev.y += (p.y - prev.y) * 0.35;
     prev.alive = p.alive;
@@ -397,11 +403,17 @@ function drawGame() {
     if (!p.alive) ctx.fillStyle = "#666f90";
     const prev = viewTrail.get(p.username);
     let moving = false;
+    let vel = { x: 0, y: 0, s: 0 };
     if (prev) {
       const md = Math.hypot(x - prev.x, y - prev.y);
       moving = md > 0.55;
     }
     viewTrail.set(p.username, { x, y });
+    const dxv = p.x - (p.lx ?? p.x);
+    const dyv = p.y - (p.ly ?? p.y);
+    vel.s = Math.hypot(dxv, dyv);
+    vel.x = dxv;
+    vel.y = dyv;
 
     if (moving && p.alive) {
       const tt = performance.now() / 120;
@@ -413,11 +425,27 @@ function drawGame() {
       ctx.fill();
       ctx.fillStyle = p.username === me.username ? "#8cf6ff" : "#d3deff";
     }
+    const st = organicState.get(p.username) || { stretch: 0, angle: 0 };
+    const targetStretch = clamp(vel.s * 0.08, 0, 0.42);
+    st.stretch += (targetStretch - st.stretch) * (moving ? 0.26 : 0.14);
+    const targetAngle = Math.atan2(vel.y, vel.x || 0.0001);
+    const diff = Math.atan2(Math.sin(targetAngle - st.angle), Math.cos(targetAngle - st.angle));
+    st.angle += diff * 0.25;
+    if (!moving) st.stretch *= 0.92;
+    organicState.set(p.username, st);
+
+    const base = 12 * CAMERA_ZOOM;
+    const sx = 1 + st.stretch;
+    const sy = 1 - st.stretch * 0.55;
+    const wobble = moving ? Math.sin(performance.now() / 85) * 0.05 : 0;
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(st.angle);
+    ctx.scale(sx + wobble, sy - wobble * 0.5);
     ctx.beginPath();
-    const bob = moving ? Math.sin(performance.now() / 120) * 1.8 : 0;
-    const radius = (12 + bob) * CAMERA_ZOOM;
-    ctx.arc(x, y, radius, 0, Math.PI * 2);
+    ctx.arc(0, 0, base, 0, Math.PI * 2);
     ctx.fill();
+    ctx.restore();
     if (moving && p.alive) {
       ctx.strokeStyle = "rgba(170, 233, 255, 0.65)";
       ctx.lineWidth = 2;
@@ -444,6 +472,14 @@ function drawGame() {
   touchPulse.classList.toggle("disabled", pulseLeft > 0);
   touchDash.textContent = dashLeft > 0 ? `DASH ${Math.ceil(dashLeft / 1000)}` : "DASH";
   touchPulse.textContent = pulseLeft > 0 ? `PULSE ${Math.ceil(pulseLeft / 1000)}` : "PULSE";
+  if (cooldownDash && cooldownPulse) {
+    cooldownDash.textContent = dashLeft > 0 ? `DASH ${Math.ceil(dashLeft / 1000)}s` : "DASH listo";
+    cooldownPulse.textContent = pulseLeft > 0 ? `PULSE ${Math.ceil(pulseLeft / 1000)}s` : "PULSE listo";
+    cooldownDash.classList.toggle("busy", dashLeft > 0);
+    cooldownDash.classList.toggle("ready", dashLeft <= 0);
+    cooldownPulse.classList.toggle("busy", pulseLeft > 0);
+    cooldownPulse.classList.toggle("ready", pulseLeft <= 0);
+  }
   gameTopLeft.textContent = `${roomState.summary?.id || ""} | ${roomState.summary?.status || ""}`;
   gameTopRight.textContent = `Vivos: ${alive}`;
   hpBars.innerHTML = "";
