@@ -138,7 +138,7 @@ function playerState(username) {
     pulseUntil: 0,
     wantsPulse: false,
     lastMove: { x: 1, y: 0 },
-    input: { up: false, down: false, left: false, right: false, dash: false }
+    input: { up: false, down: false, left: false, right: false, moveX: 0, moveY: 0, dash: false }
   };
 }
 
@@ -236,10 +236,15 @@ function updateRoom(room, dt) {
     const speed = 360;
     let dx = 0;
     let dy = 0;
-    if (p.input.up) dy -= 1;
-    if (p.input.down) dy += 1;
-    if (p.input.left) dx -= 1;
-    if (p.input.right) dx += 1;
+    if (typeof p.input.moveX === "number" || typeof p.input.moveY === "number") {
+      dx = Number(p.input.moveX || 0);
+      dy = Number(p.input.moveY || 0);
+    } else {
+      if (p.input.up) dy -= 1;
+      if (p.input.down) dy += 1;
+      if (p.input.left) dx -= 1;
+      if (p.input.right) dx += 1;
+    }
 
     const mag = Math.hypot(dx, dy) || 1;
     const ndx = dx / mag;
@@ -370,6 +375,8 @@ io.on("connection", (socket) => {
       down: !!payload?.down,
       left: !!payload?.left,
       right: !!payload?.right,
+      moveX: typeof payload?.moveX === "number" ? payload.moveX : 0,
+      moveY: typeof payload?.moveY === "number" ? payload.moveY : 0,
       dash: !!payload?.dash
     };
     if (payload?.pulse) p.wantsPulse = true;
@@ -391,4 +398,5 @@ app.get("*", (req, res) => {
 });
 
 server.listen(PORT, () => console.log(`SERVIDOR 2026 CORRIENDO EN PUERTO ${PORT}`));
+
 
