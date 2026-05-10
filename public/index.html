@@ -86,7 +86,68 @@
                 alert("Skin Equipada");
             }
         }
+// --- FUNCIÓN DE ACCESO REAL ---
+async function login() {
+    const user = document.getElementById('user-input').value;
+    const pass = document.getElementById('pass-input').value;
 
+    if(!user || !pass) return alert("Completa los datos");
+
+    const res = await fetch('/api/auth', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ username: user, password: pass })
+    });
+
+    const data = await res.json();
+    if(res.ok) {
+        myData = data; // Guardamos datos del usuario (monedas, skin)
+        document.getElementById('coin-val').innerText = data.coins;
+        document.getElementById('auth-screen').style.display = 'none';
+        document.getElementById('menu-screen').style.display = 'flex';
+    } else {
+        alert(data.error);
+    }
+}
+
+// --- CONTROLES HÍBRIDOS (DETECCIÓN) ---
+if(isMobile) {
+    // Lógica de Joystick mejorada
+    const joystick = document.getElementById('joystick');
+    const stick = document.getElementById('stick');
+    
+    joystick.addEventListener('touchmove', (e) => {
+        e.preventDefault();
+        const touch = e.touches[0];
+        const rect = joystick.getBoundingClientRect();
+        const centerX = rect.left + rect.width / 2;
+        const centerY = rect.top + rect.height / 2;
+        
+        let moveX = touch.clientX - centerX;
+        let moveY = touch.clientY - centerY;
+        
+        // Limitar movimiento del stick visual
+        const distance = Math.min(Math.sqrt(moveX**2 + moveY**2), 40);
+        const angle = Math.atan2(moveY, moveX);
+        
+        stick.style.transform = `translate(${Math.cos(angle)*distance}px, ${Math.sin(angle)*distance}px)`;
+        
+        // Enviar movimiento al servidor
+        socket.emit('playerMove', { 
+            x: players[myId].x + Math.cos(angle)*5, 
+            y: players[myId].y + Math.sin(angle)*5 
+        });
+    });
+} else {
+    // Controles de Teclado PC
+    window.addEventListener('keydown', (e) => {
+        const speed = 5;
+        if(e.key === 'w') socket.emit('playerMove', { y: players[myId].y - speed });
+        if(e.key === 's') socket.emit('playerMove', { y: players[myId].y + speed });
+        if(e.key === 'a') socket.emit('playerMove', { x: players[myId].x - speed });
+        if(e.key === 'd') socket.emit('playerMove', { x: players[myId].x + speed });
+    });
+}
         function enterGame() {
             document.getElementById('menu-screen').style.display = 'none';
             canvas.style.display = 'block';
