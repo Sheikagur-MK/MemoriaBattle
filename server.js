@@ -9,32 +9,56 @@ require("dotenv").config();
 
 const app = express();
 const server = http.createServer(app);
-const io = new Server(server);
+const io = new Server(server, { cors: { origin: "*" } });
 
 const PORT = process.env.PORT || 3000;
-const JWT_SECRET = process.env.JWT_SECRET || "dev-secret";
-const TICK_RATE = 30;
 const MAP_SIZE = 5000;
-const START_ZONE_RADIUS = 2200;
-const ZONE_INTERVAL_MS = 120000;
-const ZONE_SHRINK_FACTOR = 0.84;
-const ROUND_START_SECONDS = 15;
-const MAX_PLAYERS = 100;
-const DASH_COOLDOWN_MS = 5000;
-const PULSE_COOLDOWN_MS = 5000;
 
-// --- CONEXIÓN A BASE DE DATOS ---
+// Middleware para servir archivos de la carpeta /public
+app.use(express.json());
+app.use(express.static(path.join(__dirname, "public")));
+
+// Conexión a MongoDB
 mongoose.connect(process.env.MONGODB_URI)
-    .then(() => console.log("💎 NÚCLEO DE DATOS 2026 CONECTADO"))
-    .catch(err => console.error("❌ FALLO CRÍTICO EN DB:", err));
+  .then(() => console.log("💎 NÚCLEO DE DATOS CONECTADO"))
+  .catch(err => console.error("❌ ERROR DB:", err));
 
-const userSchema = new mongoose.Schema(
-  {
-    username: { type: String, unique: true, required: true, minlength: 3, maxlength: 24 },
-    email: { type: String, unique: true, required: true },
-    passwordHash: { type: String, required: true },
-    coins: { type: Number, default: 0 },
-    skin: { type: String, default: "default" }
+// Lógica de Jugadores
+let players = new Map();
+
+io.on("connection", (socket) => {
+  socket.on("join_room", (data) => {
+    players.set(socket.id, {
+      id: socket.id,
+      username: data.username || "Piloto",
+      x: Math.random() * MAP_SIZE,
+      y: Math.random() * MAP_SIZE,
+      skin: data.skin || "circle",
+      hp: 100
+    });
+    socket.emit("init", { mapSize: MAP_SIZE });
+  });
+
+  socket.on("input", (input) => {
+    const p = players.get(socket.id);
+    if (p) {
+      const speed = 10;
+      if (input.up) p.y -= speed;
+      if (input.down) p.y += speed;
+      if (input.left) p.x -= speed;
+      if (input.right) p.x += speed;
+    }
+  });
+
+  socket.on("disconnect", () => players.delete(socket.id));
+});
+
+// Loop del servidor a 30 FPS
+setInterval(() => {
+  io.emit("tick", Array.from(players.values()));
+}, 33);
+
+server.listen(PORT, () => console.log(`🚀 Servidor en puerto ${PORT}`));    skin: { type: String, default: "default" }
   },
   { timestamps: true }
 );
