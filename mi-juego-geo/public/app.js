@@ -4,33 +4,65 @@ const socket = io();
 const canvas = document.getElementById('gameCanvas');
 const ctx    = canvas.getContext('2d');
 
+// Ajuste inicial del canvas
 canvas.width  = window.innerWidth;
 canvas.height = window.innerHeight;
+
 window.addEventListener('resize', () => {
     canvas.width  = window.innerWidth;
     canvas.height = window.innerHeight;
 });
 
-// Estado del juego recibido del servidor
+// Estado del juego
 let gameState   = null;
 let selfId      = null;
 let worldW      = 3000;
 let worldH      = 3000;
 let matchActive = false;
 
-// Cámara (sigue al jugador)
+// Cámara y Zoom
 let camX = 0, camY = 0;
+// 4. QUITAR ZOOM: 0.5 hace que se vea el doble del mapa (más lejos)
+const CAMERA_ZOOM = 0.5; 
 
 // Input
-const keys = { up: false, down: false, left: false, right: false };
+const keys = { up: false, down: false, left: false, right: false, shoot: false };
 let mouseAngle = 0;
 
-// Cooldown de habilidad (visual)
+// Cooldown de habilidad
 let abilityCooldownMs  = 0;
 let abilityCooldownMax = 0;
 let abilityTimer       = null;
 
-// ─── INPUT ────────────────────────────────────────────────────────────────────
+// ─── ADAPTACIÓN PARA ANDROID (TOUCH) ──────────────────────────────────────────
+// 3. SOPORTE ANDROID: Manejo de toques para apuntado y movimiento
+canvas.addEventListener('touchstart', handleTouch, { passive: false });
+canvas.addEventListener('touchmove', handleTouch, { passive: false });
+canvas.addEventListener('touchend', () => {
+    keys.up = false;
+    sendInput();
+}, { passive: false });
+
+function handleTouch(e) {
+    if (!matchActive) return;
+    e.preventDefault();
+    const touch = e.touches[0];
+    
+    // Calculamos el centro de la pantalla
+    const centerX = canvas.width / 2;
+    const centerY = canvas.height / 2;
+
+    // Ángulo desde el centro hacia donde toca el dedo
+    const dx = touch.clientX - centerX;
+    const dy = touch.clientY - centerY;
+    mouseAngle = Math.atan2(dy, dx);
+
+    // En Android, al tocar la pantalla el jugador se mueve hacia esa dirección
+    keys.up = true; 
+    sendInput();
+}
+
+// ─── INPUT TECLADO Y MOUSE ────────────────────────────────────────────────────
 const KEY_MAP = {
     'ArrowUp':'up','w':'up','W':'up',
     'ArrowDown':'down','s':'down','S':'down',
@@ -40,13 +72,8 @@ const KEY_MAP = {
 
 window.addEventListener('keydown', e => {
     const k = KEY_MAP[e.key];
-    if (k && !keys[k]) {
-        keys[k] = true;
-        sendInput();
-    }
-    // Habilidad con ESPACIO o E
+    if (k && !keys[k]) { keys[k] = true; sendInput(); }
     if ((e.key === ' ' || e.key === 'e' || e.key === 'E') && matchActive) {
-        e.preventDefault();
         socket.emit('player_ability');
     }
 });
@@ -60,8 +87,10 @@ canvas.addEventListener('mousemove', e => {
     if (!matchActive || !gameState) return;
     const self = getSelf();
     if (!self) return;
-    const sx = self.x - camX;
-    const sy = self.y - camY;
+    
+    // Ajuste de ángulo considerando el ZOOM 0.5
+    const sx = (self.x - camX) * CAMERA_ZOOM;
+    const sy = (self.y - camY) * CAMERA_ZOOM;
     mouseAngle = Math.atan2(e.clientY - sy, e.clientX - sx);
     sendInput();
 });
@@ -72,32 +101,6 @@ canvas.addEventListener('mousedown', e => {
     }
 });
 
-// Touch — joystick virtual para móvil
-let touchStart = null;
-canvas.addEventListener('touchstart', e => {
-    touchStart = { x: e.touches[0].clientX, y: e.touches[0].clientY };
-    e.preventDefault();
-}, { passive: false });
-
-canvas.addEventListener('touchmove', e => {
-    if (!touchStart || !matchActive) return;
-    const dx = e.touches[0].clientX - touchStart.x;
-    const dy = e.touches[0].clientY - touchStart.y;
-    const dead = 15;
-    keys.left  = dx < -dead;
-    keys.right = dx >  dead;
-    keys.up    = dy < -dead;
-    keys.down  = dy >  dead;
-    mouseAngle = Math.atan2(dy, dx);
-    sendInput();
-    e.preventDefault();
-}, { passive: false });
-
-canvas.addEventListener('touchend', () => {
-    keys.up = keys.down = keys.left = keys.right = false;
-    sendInput();
-});
-
 function sendInput() {
     if (!matchActive) return;
     socket.emit('player_input', { keys: { ...keys }, angle: mouseAngle });
@@ -105,47 +108,23 @@ function sendInput() {
 
 // ─── EVENTOS DEL SERVIDOR ─────────────────────────────────────────────────────
 
-socket.on('queue_status', (data) => {
-    if (window.app && data.counting) {
-        window.app.updateRing(data.countdown);
-    }
-});
-
 socket.on('match_start', (data) => {
     selfId      = socket.id;
     worldW      = data.worldW;
     worldH      = data.worldH;
     matchActive = true;
 
-    camX = data.self.x - canvas.width  / 2;
-    camY = data.self.y - canvas.height / 2;
+    // Posicionamiento inicial de cámara
+    camX = data.self.x - (canvas.width / CAMERA_ZOOM) / 2;
+    camY = data.self.y - (canvas.height / CAMERA_ZOOM) / 2;
 
-    if (window.app && typeof window.app.switchScreen === 'function') {
-        window.app.switchScreen(null); 
-    }
-    
     document.getElementById('screen-game-ui').style.display = 'block';
-    // Sincronización con las nuevas habilidades del HTML
-    document.getElementById('hud-shape-name').innerText = shapeAbilityName(data.self.shape);
-
     loop();
 });
 
 socket.on('game_state', (data) => {
     gameState = data;
     updateHUD(data);
-});
-
-socket.on('you_died', (data) => {
-    matchActive = false;
-    document.getElementById('screen-game-ui').style.display = 'none';
-    showDeathScreen(data.kills, data.position);
-});
-
-socket.on('match_end', (data) => {
-    matchActive = false;
-    document.getElementById('screen-game-ui').style.display = 'none';
-    showEndScreen(data);
 });
 
 socket.on('ability_used', (data) => {
@@ -160,7 +139,7 @@ socket.on('ability_used', (data) => {
 
 // ─── LOOP DE RENDER ───────────────────────────────────────────────────────────
 function loop() {
-    if (!matchActive && !gameState) return;
+    if (!matchActive) return;
     requestAnimationFrame(loop);
     render();
 }
@@ -169,9 +148,10 @@ function render() {
     if (!gameState) return;
     const self = getSelf();
 
+    // Seguimiento de cámara suave
     if (self) {
-        const targetX = self.x - canvas.width  / 2;
-        const targetY = self.y - canvas.height / 2;
+        const targetX = self.x - (canvas.width / CAMERA_ZOOM) / 2;
+        const targetY = self.y - (canvas.height / CAMERA_ZOOM) / 2;
         camX += (targetX - camX) * 0.1;
         camY += (targetY - camY) * 0.1;
     }
@@ -180,15 +160,18 @@ function render() {
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
     ctx.save();
+    
+    // APLICAR ZOOM OUT (Ver más mapa)
+    ctx.scale(CAMERA_ZOOM, CAMERA_ZOOM);
     ctx.translate(-camX, -camY);
 
     drawGrid();
     drawZone(gameState.zone);
 
-    // Balas con efectos de brillo neón
+    // Balas
     gameState.bullets.forEach(b => {
         ctx.beginPath();
-        ctx.arc(b.x, b.y, 6, 0, Math.PI * 2);
+        ctx.arc(b.x, b.y, 10, 0, Math.PI * 2); // Balas un poco más grandes para compensar zoom
         ctx.fillStyle = b.color;
         ctx.shadowBlur = 15;
         ctx.shadowColor = b.color;
@@ -196,12 +179,13 @@ function render() {
         ctx.shadowBlur = 0;
     });
 
+    // Jugadores
     gameState.players.forEach(p => {
-        if (!p.alive) return;
-        drawPlayer(p, p.id === selfId);
+        if (p.alive) drawPlayer(p, p.id === selfId);
     });
 
     ctx.restore();
+    
     drawMinimap(gameState);
     drawAbilityCooldown();
 }
@@ -209,252 +193,116 @@ function render() {
 function drawPlayer(p, isSelf) {
     ctx.save();
     ctx.translate(p.x, p.y);
-    const r = 20;
+    const r = 30; // Tamaño base del jugador un poco mayor por el zoom out
 
-    // Efecto visual de escudo activo (para la clase Círculo)
     if (p.shielded) {
         ctx.beginPath();
-        ctx.arc(0, 0, r + 12, 0, Math.PI * 2);
-        ctx.strokeStyle = 'rgba(0,255,136,0.8)';
-        ctx.lineWidth = 4;
-        ctx.shadowBlur = 25;
-        ctx.shadowColor = '#00ff88';
+        ctx.arc(0, 0, r + 15, 0, Math.PI * 2);
+        ctx.strokeStyle = '#00ff88';
+        ctx.lineWidth = 5;
         ctx.stroke();
-        ctx.shadowBlur = 0;
     }
 
+    ctx.fillStyle = p.color;
     ctx.shadowBlur = isSelf ? 30 : 15;
     ctx.shadowColor = p.color;
-    ctx.fillStyle = p.color;
 
-    // DIBUJO BASADO EN LA FIGURA SELECCIONADA
     ctx.beginPath();
-    if (p.shape === 'circle') {
-        ctx.arc(0, 0, r, 0, Math.PI * 2);
-    } else if (p.shape === 'square') {
-        ctx.rect(-r, -r, r*2, r*2);
-    } else if (p.shape === 'triangle') {
-        // Un triángulo más agresivo para el combate
-        ctx.moveTo(0, -r - 5);
-        ctx.lineTo(-r - 5, r + 5);
-        ctx.lineTo(r + 5, r + 5);
+    if (p.shape === 'circle') ctx.arc(0, 0, r, 0, Math.PI * 2);
+    else if (p.shape === 'square') ctx.rect(-r, -r, r*2, r*2);
+    else if (p.shape === 'triangle') {
+        ctx.moveTo(0, -r - 10);
+        ctx.lineTo(-r - 10, r + 10);
+        ctx.lineTo(r + 10, r + 10);
         ctx.closePath();
     }
     ctx.fill();
     ctx.shadowBlur = 0;
 
-    // Indicador de dirección (puntero)
-    if (isSelf) {
-        ctx.save();
-        ctx.rotate(mouseAngle);
-        ctx.strokeStyle = 'rgba(255,255,255,0.8)';
-        ctx.lineWidth = 3;
-        ctx.beginPath();
-        ctx.moveTo(r + 5, 0);
-        ctx.lineTo(r + 25, 0);
-        ctx.stroke();
-        ctx.restore();
-    }
-
-    // Barras de Vida sobre el jugador
-    const barW = 50, barH = 6;
-    const hpPct = Math.max(0, p.hp / p.maxHp);
-    ctx.fillStyle = 'rgba(0,0,0,0.8)';
-    ctx.fillRect(-barW/2, -r - 20, barW, barH);
-    
-    // Color dinámico según salud
-    ctx.fillStyle = hpPct > 0.6 ? '#00ff88' : hpPct > 0.3 ? '#ffaa00' : '#ff4444';
-    ctx.fillRect(-barW/2, -r - 20, barW * hpPct, barH);
-
-    // Texto de nombre
-    ctx.fillStyle = isSelf ? '#ffffff' : 'rgba(255,255,255,0.7)';
-    ctx.font = `bold 13px Orbitron, sans-serif`;
+    // Nombre y Vida
+    ctx.fillStyle = '#fff';
+    ctx.font = `bold 20px Orbitron`;
     ctx.textAlign = 'center';
-    ctx.fillText(p.username, 0, -r - 28);
+    ctx.fillText(p.username, 0, -r - 35);
+
+    // Barra de HP
+    const bw = 60, bh = 8;
+    ctx.fillStyle = '#333';
+    ctx.fillRect(-bw/2, -r - 25, bw, bh);
+    ctx.fillStyle = '#00ff88';
+    ctx.fillRect(-bw/2, -r - 25, bw * (p.hp/p.maxHp), bh);
+
     ctx.restore();
 }
 
-function drawZone(zone) {
-    if (!zone) return;
-    ctx.save();
-    // Exterior de la zona (peligro)
-    ctx.beginPath();
-    ctx.rect(-5000, -5000, 15000, 15000); // Área masiva para cubrir todo
-    ctx.arc(zone.x, zone.y, zone.radius, 0, Math.PI * 2, true);
-    ctx.fillStyle = 'rgba(255, 0, 70, 0.15)';
-    ctx.fill();
-
-    // Borde de la zona
-    ctx.beginPath();
-    ctx.arc(zone.x, zone.y, zone.radius, 0, Math.PI * 2);
-    ctx.strokeStyle = 'rgba(255, 0, 100, 0.8)';
-    ctx.lineWidth = 5;
-    ctx.shadowBlur = 30;
-    ctx.shadowColor = '#ff0064';
-    ctx.stroke();
-    ctx.restore();
-}
+// ─── FUNCIONES DE APOYO ───────────────────────────────────────────────────────
 
 function drawGrid() {
     ctx.strokeStyle = 'rgba(0,243,255,0.05)';
-    ctx.lineWidth = 1;
-    const step = 150;
+    ctx.lineWidth = 2;
+    const step = 200;
     for (let x = 0; x <= worldW; x += step) {
         ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, worldH); ctx.stroke();
     }
     for (let y = 0; y <= worldH; y += step) {
         ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(worldW, y); ctx.stroke();
     }
-    // Bordes del mapa
-    ctx.strokeStyle = 'rgba(0,243,255,0.2)';
-    ctx.lineWidth = 10;
-    ctx.strokeRect(0, 0, worldW, worldH);
 }
 
-function drawMinimap(state) {
-    const SIZE = 180;
-    const PAD  = 20;
-    const mx   = canvas.width - SIZE - PAD;
-    const my   = PAD;
-    const scaleX = SIZE / worldW;
-    const scaleY = SIZE / worldH;
-
-    ctx.fillStyle = 'rgba(5, 5, 15, 0.85)';
-    ctx.fillRect(mx, my, SIZE, SIZE);
-    ctx.strokeStyle = 'rgba(0,243,255,0.3)';
-    ctx.lineWidth = 2;
-    ctx.strokeRect(mx, my, SIZE, SIZE);
-
-    if (state.zone) {
-        ctx.beginPath();
-        ctx.arc(mx + state.zone.x * scaleX, my + state.zone.y * scaleY, state.zone.radius * scaleX, 0, Math.PI * 2);
-        ctx.strokeStyle = '#ff0064';
-        ctx.lineWidth = 1.5;
-        ctx.stroke();
-    }
-
-    const self = getSelf();
-    if (self) {
-        ctx.beginPath();
-        ctx.arc(mx + self.x * scaleX, my + self.y * scaleY, 5, 0, Math.PI * 2);
-        ctx.fillStyle = '#ffffff';
-        ctx.shadowBlur = 10;
-        ctx.shadowColor = '#00f3ff';
-        ctx.fill();
-        ctx.shadowBlur = 0;
-    }
-}
-
-function drawAbilityCooldown() {
-    const self = getSelf();
-    if (!self) return;
-
-    const cx = 80, cy = canvas.height - 80, r = 38;
-    const pct = abilityCooldownMax > 0 ? abilityCooldownMs / abilityCooldownMax : 0;
-    const ready = pct <= 0;
-
-    // Fondo del círculo de habilidad
+function drawZone(zone) {
+    if (!zone) return;
     ctx.beginPath();
-    ctx.arc(cx, cy, r, 0, Math.PI * 2);
-    ctx.fillStyle = 'rgba(0,0,0,0.8)';
-    ctx.fill();
-    ctx.strokeStyle = '#222';
-    ctx.lineWidth = 4;
+    ctx.arc(zone.x, zone.y, zone.radius, 0, Math.PI * 2);
+    ctx.strokeStyle = '#ff0064';
+    ctx.lineWidth = 10;
     ctx.stroke();
+}
 
-    if (!ready) {
-        ctx.beginPath();
-        ctx.arc(cx, cy, r, -Math.PI/2, -Math.PI/2 + (pct) * Math.PI * 2);
-        ctx.strokeStyle = 'var(--neon-accent)';
-        ctx.lineWidth = 4;
-        ctx.stroke();
-    } else {
-        ctx.beginPath();
-        ctx.arc(cx, cy, r, 0, Math.PI * 2);
-        ctx.strokeStyle = 'var(--neon-success)';
-        ctx.lineWidth = 4;
-        ctx.shadowBlur = 15;
-        ctx.shadowColor = '#00ff88';
-        ctx.stroke();
-        ctx.shadowBlur = 0;
-    }
-
-    const name = shapeAbilityName(self.shape);
-    ctx.fillStyle = ready ? '#00ff88' : '#666';
-    ctx.font = 'bold 11px Orbitron, sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillText(name, cx, cy + 5);
+function getSelf() {
+    return gameState ? gameState.players.find(p => p.id === selfId) : null;
 }
 
 function updateHUD(data) {
     const self = getSelf();
-    const aliveEl = document.getElementById('hud-alive');
-    if (aliveEl) aliveEl.innerText = data.alive;
-
     if (!self) return;
 
-    const hpEl  = document.getElementById('hud-hp-fill');
-    const hpTxt = document.getElementById('hud-hp-text');
-    if (hpEl) hpEl.style.width = Math.max(0, (self.hp / self.maxHp) * 100) + '%';
-    if (hpTxt) hpTxt.innerText = `${Math.max(0, Math.floor(self.hp))} / ${self.maxHp}`;
+    // Actualizar Vivos
+    const aliveEl = document.getElementById('hud-alive');
+    if (aliveEl) aliveEl.innerText = `VIVOS: ${data.alive}`;
 
-    const killsEl = document.getElementById('hud-kills');
-    if (killsEl) killsEl.innerText = self.kills;
+    // Actualizar Barra HP
+    const hpFill = document.getElementById('hud-hp-fill');
+    if (hpFill) hpFill.style.width = (self.hp / self.maxHp) * 100 + '%';
+}
 
-    const tbody = document.getElementById('kills-table-body');
-    if (tbody) {
-        const sorted = [...data.players].filter(p => p.alive).sort((a,b) => b.kills - a.kills).slice(0, 8);
-        tbody.innerHTML = sorted.map((p, i) =>
-            `<tr style="color:${p.id === selfId ? 'var(--neon-primary)' : '#ccc'}">
-                <td>${i+1}</td>
-                <td>${p.username}</td>
-                <td>${p.kills}</td>
-            </tr>`
-        ).join('');
+function drawMinimap(state) {
+    const SIZE = 150;
+    const mx = canvas.width - SIZE - 20;
+    const my = 20;
+    ctx.fillStyle = 'rgba(0,0,0,0.7)';
+    ctx.fillRect(mx, my, SIZE, SIZE);
+    ctx.strokeStyle = '#00f3ff';
+    ctx.strokeRect(mx, my, SIZE, SIZE);
+}
+
+function drawAbilityCooldown() {
+    const cx = 80, cy = canvas.height - 80, r = 35;
+    const pct = abilityCooldownMax > 0 ? abilityCooldownMs / abilityCooldownMax : 0;
+    
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(0,0,0,0.5)';
+    ctx.fill();
+    
+    if (pct > 0) {
+        ctx.beginPath();
+        ctx.moveTo(cx, cy);
+        ctx.arc(cx, cy, r, -Math.PI/2, -Math.PI/2 + (pct * Math.PI * 2));
+        ctx.fillStyle = 'rgba(255,0,200,0.4)';
+        ctx.fill();
     }
 }
 
-function showDeathScreen(kills, position) {
-    const el = document.getElementById('screen-dead');
-    if (!el) return;
-    document.getElementById('dead-kills').innerText    = kills;
-    document.getElementById('dead-position').innerText = position;
-    el.style.display = 'flex';
-}
-
-function showEndScreen(data) {
-    const el = document.getElementById('screen-victory');
-    if (!el) return;
-    const self = gameState?.players?.find(p => p.id === selfId);
-    const won  = data.winner && self && data.winner === self.username;
-
-    document.getElementById('end-title').innerText   = won ? '¡VICTORIA GEOMÉTRICA!' : 'FIN DE PARTIDA';
-    document.getElementById('end-winner').innerText  = data.winner || 'Nadie';
-    document.getElementById('end-title').style.color = won ? 'var(--neon-success)' : 'var(--neon-accent)';
-
-    const tbody = document.getElementById('end-ranking-body');
-    if (tbody && data.ranking) {
-        tbody.innerHTML = data.ranking.map(r =>
-            `<tr style="color:${r.won ? '#00ff88' : '#ccc'}">
-                <td>#${r.position}</td>
-                <td>${r.username}</td>
-                <td>${r.kills} kills</td>
-            </tr>`
-        ).join('');
-    }
-    el.style.display = 'flex';
-}
-
-function getSelf() {
-    if (!gameState) return null;
-    return gameState.players.find(p => p.id === selfId) || null;
-}
-
-// SINCRONIZACIÓN DE HABILIDADES CON LOS ATRIBUTOS DE CADA FIGURA
 function shapeAbilityName(shape) {
-    return { 
-        circle: 'SUPER ESCUDO', 
-        triangle: 'DASH AGRESIVO', 
-        square: 'RÁFAGA BALÍSTICA' 
-    }[shape] || 'HABILIDAD';
+    return { circle: 'ESCUDO', triangle: 'DASH', square: 'RAFAGA' }[shape] || 'Habilidad';
 }
