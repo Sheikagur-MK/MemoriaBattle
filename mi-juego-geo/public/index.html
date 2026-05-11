@@ -7,17 +7,22 @@
     <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Rajdhani:wght@300;500;700&display=swap" rel="stylesheet">
     <style>
         :root {
-            --neon-primary: #00f3ff; --neon-accent: #ff00c8; --neon-success: #00ff88;
-            --bg-deep: #020205; --glass: rgba(15, 15, 25, 0.85);
+            --neon-primary: #00f3ff;
+            --neon-accent: #ff00c8;
+            --neon-success: #00ff88;
+            --bg-deep: #020205;
+            --glass: rgba(15, 15, 25, 0.85);
         }
         * { box-sizing: border-box; font-family: 'Rajdhani', sans-serif; cursor: none; }
         body, html { margin: 0; padding: 0; width: 100%; height: 100%; background: var(--bg-deep); overflow: hidden; color: #fff; }
 
-        /* --- CURSOR PERSONALIZADO 2026 --- */
+        /* --- CURSOR PERSONALIZADO --- */
         #custom-cursor {
-            position: fixed; width: 20px; height: 20px; border: 2px solid var(--neon-primary);
-            border-radius: 50%; pointer-events: none; z-index: 10000; transition: transform 0.1s;
+            position: fixed; width: 20px; height: 20px;
+            border: 2px solid var(--neon-primary); border-radius: 50%;
+            pointer-events: none; z-index: 10000; transition: transform 0.1s;
             box-shadow: 0 0 10px var(--neon-primary);
+            transform: translate(-50%, -50%);
         }
 
         /* --- SISTEMA DE PANTALLAS --- */
@@ -27,8 +32,9 @@
             background: radial-gradient(circle at center, #0a0a1a 0%, #000 100%);
         }
         .screen.active { display: flex; animation: fadeIn 0.8s ease; }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
 
-        /* --- INTERFAZ DE USUARIO (GLASSMORPHISM) --- */
+        /* --- PANEL GLASSMORPHISM --- */
         .panel {
             background: var(--glass); border: 1px solid var(--neon-primary);
             padding: 3rem; border-radius: 20px; width: 450px; text-align: center;
@@ -37,20 +43,36 @@
         h1 { font-family: 'Orbitron'; font-size: 2.2rem; letter-spacing: 4px; margin-bottom: 2rem; color: var(--neon-primary); }
 
         /* --- INPUTS Y BOTONES --- */
-        .input-box { width: 100%; padding: 12px; margin: 10px 0; background: rgba(0,0,0,0.4); border: 1px solid #333; color: #fff; border-radius: 5px; }
+        .input-box {
+            width: 100%; padding: 12px; margin: 10px 0;
+            background: rgba(0,0,0,0.4); border: 1px solid #333;
+            color: #fff; border-radius: 5px; font-size: 1rem;
+            font-family: 'Rajdhani', sans-serif;
+        }
+        .input-box:focus { outline: none; border-color: var(--neon-primary); }
+
         .btn {
-            width: 100%; padding: 15px; margin-top: 15px; border: none; font-family: 'Orbitron';
-            font-weight: bold; font-size: 1rem; cursor: pointer; position: relative;
-            background: var(--neon-primary); color: #000; clip-path: polygon(5% 0, 100% 0, 95% 100%, 0 100%);
-            transition: 0.3s;
+            width: 100%; padding: 15px; margin-top: 15px; border: none;
+            font-family: 'Orbitron'; font-weight: bold; font-size: 1rem;
+            cursor: pointer; background: var(--neon-primary); color: #000;
+            clip-path: polygon(5% 0, 100% 0, 95% 100%, 0 100%); transition: 0.3s;
         }
         .btn:hover { background: var(--neon-success); transform: translateY(-3px); box-shadow: 0 10px 20px rgba(0, 255, 136, 0.3); }
         .btn.secondary { background: transparent; border: 1px solid var(--neon-accent); color: var(--neon-accent); }
+        .btn.secondary:hover { background: var(--neon-accent); color: #000; }
 
-        /* --- LOBBY ANIMADO --- */
-        #lobby-ui { flex-direction: column; }
+        /* CORRECCIÓN: Mensaje de estado/error visible */
+        #auth-message {
+            margin-top: 15px; padding: 10px; border-radius: 5px;
+            font-size: 0.95rem; display: none;
+        }
+        #auth-message.error { background: rgba(255, 50, 50, 0.2); border: 1px solid #ff3333; color: #ff6666; display: block; }
+        #auth-message.success { background: rgba(0, 255, 136, 0.2); border: 1px solid var(--neon-success); color: var(--neon-success); display: block; }
+
+        /* --- LOBBY --- */
+        #screen-lobby { flex-direction: column; gap: 20px; }
         .character-preview {
-            width: 200px; height: 200px; margin: 20px;
+            width: 200px; height: 200px; margin: 10px;
             display: flex; justify-content: center; align-items: center;
             animation: float 3s infinite ease-in-out;
         }
@@ -58,34 +80,52 @@
 
         .game-modes { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; width: 600px; }
         .mode-card {
-            background: rgba(255,255,255,0.05); border: 1px solid #222; padding: 20px;
-            border-radius: 10px; cursor: pointer; transition: 0.3s;
+            background: rgba(255,255,255,0.05); border: 1px solid #222;
+            padding: 20px; border-radius: 10px; cursor: pointer; transition: 0.3s;
         }
-        .mode-card:hover { border-color: var(--neon-primary); background: rgba(0, 243, 255, 0.1); }
+        .mode-card:hover { border-color: var(--neon-primary); background: rgba(0, 243, 255, 0.1); transform: translateY(-3px); }
+        .mode-card h3 { font-family: 'Orbitron'; font-size: 0.9rem; color: var(--neon-primary); margin: 0 0 8px 0; }
+        .mode-card p { margin: 0; font-size: 0.85rem; color: #aaa; }
+
+        /* --- PANTALLA DE CARGA --- */
+        #screen-loading { flex-direction: column; }
+        #loading-text { animation: pulse 1.5s infinite; }
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+        #queue-count { margin-top: 10px; color: var(--neon-success); font-size: 1.1rem; }
 
         /* --- CANVAS --- */
         #gameCanvas { display: block; filter: contrast(1.1) saturate(1.2); }
+
+        /* --- HEADER EN LOBBY --- */
+        .lobby-header { text-align: center; }
+        .lobby-header h1 { margin-bottom: 5px; }
+        .lobby-linas { color: var(--neon-accent); font-size: 1.1rem; }
     </style>
 </head>
 <body>
 
     <div id="custom-cursor"></div>
 
+    <!-- PANTALLA DE AUTENTICACIÓN -->
     <div id="screen-auth" class="screen active">
         <div class="panel">
             <h1>SISTEMA_GEO</h1>
-            <div id="auth-form">
-                <input type="text" id="user-in" class="input-box" placeholder="PILOTO_ID">
-                <input type="password" id="pass-in" class="input-box" placeholder="ACCESS_CODE">
-                <button class="btn" onclick="app.authenticate('login')">INICIAR SESIÓN</button>
-                <button class="btn secondary" onclick="app.authenticate('register')">CREAR NUEVA CUENTA</button>
-            </div>
+            <input type="text" id="user-in" class="input-box" placeholder="PILOTO_ID" autocomplete="off">
+            <input type="password" id="pass-in" class="input-box" placeholder="ACCESS_CODE">
+            <button class="btn" onclick="app.authenticate('login')">INICIAR SESIÓN</button>
+            <button class="btn secondary" onclick="app.authenticate('register')">CREAR NUEVA CUENTA</button>
+            <!-- CORRECCIÓN: Área de mensajes de error/éxito en vez de alert() -->
+            <div id="auth-message"></div>
         </div>
     </div>
 
+    <!-- PANTALLA DE LOBBY -->
     <div id="screen-lobby" class="screen">
-        <h1>BIENVENIDO, <span id="player-name" style="color:var(--neon-success)">PILOTO</span></h1>
-        
+        <div class="lobby-header">
+            <h1>BIENVENIDO, <span id="player-name" style="color:var(--neon-success)">PILOTO</span></h1>
+            <p class="lobby-linas">LINAS: <span id="player-linas">0</span></p>
+        </div>
+
         <div class="character-preview" id="char-viz">
             <svg width="150" height="150" viewBox="0 0 100 100">
                 <polygon points="50,10 90,90 10,90" fill="none" stroke="#00f3ff" stroke-width="2">
@@ -114,10 +154,12 @@
         </div>
     </div>
 
+    <!-- PANTALLA DE CARGA / COLA -->
     <div id="screen-loading" class="screen">
         <div class="panel">
             <h1 id="loading-text">BUSCANDO PILOTOS...</h1>
-            <div id="queue-count">Jugadores encontrados: 1 / 100</div>
+            <div id="queue-count">Jugadores en línea: 1</div>
+            <button class="btn secondary" style="margin-top:2rem" onclick="app.cancelQueue()">CANCELAR</button>
         </div>
     </div>
 
@@ -147,23 +189,52 @@
 
             setupEvents() {
                 this.socket.on('auth_result', (res) => {
-                    if(res.success) {
-                        this.user = res.user;
-                        this.switchScreen('screen-lobby');
-                        document.getElementById('player-name').innerText = this.user.username;
+                    if (res.success) {
+                        // CORRECCIÓN: Solo ir al lobby si hay datos de usuario (login)
+                        // Si es registro exitoso, mostrar mensaje y pedir que haga login
+                        if (res.user) {
+                            this.user = res.user;
+                            document.getElementById('player-name').innerText = this.user.username;
+                            document.getElementById('player-linas').innerText = this.user.linas;
+                            this.switchScreen('screen-lobby');
+                        } else {
+                            // Registro exitoso: mostrar mensaje de éxito sin cambiar de pantalla
+                            this.showMessage(res.message, 'success');
+                        }
                     } else {
-                        // Muestra el mensaje exacto de MongoDB (ej: "Usuario ya existe")
-                        alert(res.message);
+                        this.showMessage(res.message, 'error');
                     }
+                });
+
+                // CORRECCIÓN: Manejar respuesta de la cola
+                this.socket.on('queue_status', (data) => {
+                    document.getElementById('queue-count').innerText =
+                        `Jugadores en línea: ${data.players}`;
+                });
+
+                // CORRECCIÓN: Manejar sala privada creada
+                this.socket.on('private_ready', (data) => {
+                    alert(`Sala creada. Código de acceso: ${data.code}`);
                 });
             },
 
+            // CORRECCIÓN: Mostrar mensajes en el panel en vez de alert()
+            showMessage(msg, type) {
+                const el = document.getElementById('auth-message');
+                el.textContent = msg;
+                el.className = type; // 'error' o 'success'
+            },
+
             authenticate(type) {
-                const user = document.getElementById('user-in').value;
-                const pass = document.getElementById('pass-in').value;
-                if(!user || !pass) return alert("Completa los datos");
-                
-                // CORRECCIÓN FINAL: Diferenciamos el evento para que el servidor valide o cree en MongoDB
+                const user = document.getElementById('user-in').value.trim();
+                const pass = document.getElementById('pass-in').value.trim();
+                if (!user || !pass) {
+                    return this.showMessage("Completa todos los campos.", 'error');
+                }
+                // CORRECCIÓN: Limpiar mensaje previo antes de enviar
+                document.getElementById('auth-message').className = '';
+                document.getElementById('auth-message').textContent = '';
+
                 if (type === 'login') {
                     this.socket.emit('login_user', { user, pass });
                 } else {
@@ -174,7 +245,7 @@
             switchScreen(id) {
                 document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
                 const target = document.getElementById(id);
-                if(target) target.classList.add('active');
+                if (target) target.classList.add('active');
             },
 
             joinQueue(mode) {
@@ -182,9 +253,21 @@
                 this.socket.emit('enter_queue', { mode, class: 'striker' });
             },
 
-            showPrivateMenu() { alert("Generando código de sala privada..."); },
-            openShop() { alert("Cargando catálogo de habilidades 2026..."); },
-            logout() { location.reload(); }
+            cancelQueue() {
+                this.switchScreen('screen-lobby');
+            },
+
+            showPrivateMenu() {
+                this.socket.emit('create_private');
+            },
+
+            openShop() {
+                alert("Cargando catálogo de habilidades 2026...");
+            },
+
+            logout() {
+                location.reload();
+            }
         };
 
         app.init();
