@@ -102,24 +102,30 @@ function sendInput() {
 }
 
 // ─── EVENTOS DEL SERVIDOR ─────────────────────────────────────────────────────
+
+// CAMBIO: Sincronización con la UI neón al entrar en cola
+socket.on('queue_status', (data) => {
+    if (window.app && data.counting) {
+        window.app.updateRing(data.countdown);
+    }
+});
+
 socket.on('match_start', (data) => {
     selfId      = socket.id;
     worldW      = data.worldW;
     worldH      = data.worldH;
     matchActive = true;
 
-    // Posición inicial de cámara
     camX = data.self.x - canvas.width  / 2;
     camY = data.self.y - canvas.height / 2;
 
+    // CAMBIO: Usar la función switchScreen de tu HTML para limpiar overlays
+    if (window.app && typeof window.app.switchScreen === 'function') {
+        window.app.switchScreen(null); 
+    }
+    
     document.getElementById('screen-game-ui').style.display = 'block';
     document.getElementById('hud-shape-name').innerText = shapeAbilityName(data.self.shape);
-
-    // Ocultar todas las pantallas overlay
-    ['screen-auth','screen-lobby','screen-loading','screen-dead','screen-victory'].forEach(id => {
-        const el = document.getElementById(id);
-        if (el) el.style.display = 'none';
-    });
 
     loop();
 });
@@ -162,7 +168,6 @@ function render() {
     if (!gameState) return;
     const self = getSelf();
 
-    // Suavizar cámara
     if (self) {
         const targetX = self.x - canvas.width  / 2;
         const targetY = self.y - canvas.height / 2;
@@ -170,20 +175,16 @@ function render() {
         camY += (targetY - camY) * 0.1;
     }
 
-    // Fondo
     ctx.fillStyle = '#020205';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
     ctx.save();
     ctx.translate(-camX, -camY);
 
-    // ── GRID ──────────────────────────────────────────────────────────────────
     drawGrid();
-
-    // ── ZONA SEGURA ───────────────────────────────────────────────────────────
     drawZone(gameState.zone);
 
-    // ── BALAS ─────────────────────────────────────────────────────────────────
+    // Balas con brillo
     gameState.bullets.forEach(b => {
         ctx.beginPath();
         ctx.arc(b.x, b.y, 6, 0, Math.PI * 2);
@@ -194,29 +195,21 @@ function render() {
         ctx.shadowBlur = 0;
     });
 
-    // ── JUGADORES ─────────────────────────────────────────────────────────────
     gameState.players.forEach(p => {
         if (!p.alive) return;
         drawPlayer(p, p.id === selfId);
     });
 
     ctx.restore();
-
-    // ── MINIMAPA ──────────────────────────────────────────────────────────────
     drawMinimap(gameState);
-
-    // ── HUD HABILIDAD ────────────────────────────────────────────────────────
     drawAbilityCooldown();
 }
 
-// ─── DIBUJADO DE JUGADOR ──────────────────────────────────────────────────────
 function drawPlayer(p, isSelf) {
     ctx.save();
     ctx.translate(p.x, p.y);
-
     const r = 20;
 
-    // Escudo (círculo)
     if (p.shielded) {
         ctx.beginPath();
         ctx.arc(0, 0, r + 10, 0, Math.PI * 2);
@@ -228,12 +221,10 @@ function drawPlayer(p, isSelf) {
         ctx.shadowBlur = 0;
     }
 
-    // Brillo si es el jugador propio
     ctx.shadowBlur = isSelf ? 30 : 15;
     ctx.shadowColor = p.color;
     ctx.fillStyle = p.color;
 
-    // Forma
     ctx.beginPath();
     if (p.shape === 'circle') {
         ctx.arc(0, 0, r, 0, Math.PI * 2);
@@ -248,7 +239,6 @@ function drawPlayer(p, isSelf) {
     ctx.fill();
     ctx.shadowBlur = 0;
 
-    // Indicador de dirección (línea de apuntado) — solo para el jugador propio
     if (isSelf) {
         ctx.save();
         ctx.rotate(mouseAngle);
@@ -261,7 +251,6 @@ function drawPlayer(p, isSelf) {
         ctx.restore();
     }
 
-    // Barra de vida
     const barW = 44, barH = 5;
     const hpPct = Math.max(0, p.hp / p.maxHp);
     ctx.fillStyle = 'rgba(0,0,0,0.6)';
@@ -269,18 +258,14 @@ function drawPlayer(p, isSelf) {
     ctx.fillStyle = hpPct > 0.5 ? '#00ff88' : hpPct > 0.25 ? '#ffaa00' : '#ff4444';
     ctx.fillRect(-barW/2, -r - 14, barW * hpPct, barH);
 
-    // Nombre
     ctx.fillStyle = isSelf ? '#ffffff' : 'rgba(255,255,255,0.7)';
     ctx.font = `bold 11px Rajdhani, sans-serif`;
     ctx.textAlign = 'center';
     ctx.fillText(p.username, 0, -r - 18);
-
     ctx.restore();
 }
 
-// ─── ZONA ─────────────────────────────────────────────────────────────────────
 function drawZone(zone) {
-    // Área fuera de zona (oscura)
     ctx.save();
     ctx.beginPath();
     ctx.rect(0, 0, worldW, worldH);
@@ -288,7 +273,6 @@ function drawZone(zone) {
     ctx.fillStyle = 'rgba(120, 0, 255, 0.18)';
     ctx.fill();
 
-    // Borde de zona
     ctx.beginPath();
     ctx.arc(zone.x, zone.y, zone.radius, 0, Math.PI * 2);
     ctx.strokeStyle = 'rgba(180, 0, 255, 0.8)';
@@ -296,11 +280,9 @@ function drawZone(zone) {
     ctx.shadowBlur = 20;
     ctx.shadowColor = '#aa00ff';
     ctx.stroke();
-    ctx.shadowBlur = 0;
     ctx.restore();
 }
 
-// ─── GRID ─────────────────────────────────────────────────────────────────────
 function drawGrid() {
     ctx.strokeStyle = 'rgba(255,255,255,0.04)';
     ctx.lineWidth = 1;
@@ -311,43 +293,33 @@ function drawGrid() {
     for (let y = 0; y <= worldH; y += step) {
         ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(worldW, y); ctx.stroke();
     }
-    // Borde del mundo
     ctx.strokeStyle = 'rgba(255,0,0,0.3)';
     ctx.lineWidth = 4;
     ctx.strokeRect(0, 0, worldW, worldH);
 }
 
-// ─── MINIMAPA ─────────────────────────────────────────────────────────────────
 function drawMinimap(state) {
-    const SIZE   = 160;
-    const PAD    = 16;
-    const mx     = canvas.width - SIZE - PAD;
-    const my     = PAD;
+    const SIZE = 160;
+    const PAD  = 16;
+    const mx   = canvas.width - SIZE - PAD;
+    const my   = PAD;
     const scaleX = SIZE / worldW;
     const scaleY = SIZE / worldH;
 
-    // Fondo
     ctx.fillStyle = 'rgba(0,0,0,0.7)';
     ctx.fillRect(mx, my, SIZE, SIZE);
     ctx.strokeStyle = 'rgba(0,243,255,0.4)';
     ctx.lineWidth = 1;
     ctx.strokeRect(mx, my, SIZE, SIZE);
 
-    // Zona en minimapa
     if (state.zone) {
         ctx.beginPath();
-        ctx.arc(
-            mx + state.zone.x * scaleX,
-            my + state.zone.y * scaleY,
-            state.zone.radius * scaleX,
-            0, Math.PI * 2
-        );
+        ctx.arc(mx + state.zone.x * scaleX, my + state.zone.y * scaleY, state.zone.radius * scaleX, 0, Math.PI * 2);
         ctx.strokeStyle = 'rgba(170,0,255,0.7)';
         ctx.lineWidth = 1.5;
         ctx.stroke();
     }
 
-    // Solo mostrar punto del jugador propio (no enemigos)
     const self = getSelf();
     if (self) {
         ctx.beginPath();
@@ -358,15 +330,8 @@ function drawMinimap(state) {
         ctx.fill();
         ctx.shadowBlur = 0;
     }
-
-    // Label
-    ctx.fillStyle = 'rgba(255,255,255,0.5)';
-    ctx.font = '9px Rajdhani, sans-serif';
-    ctx.textAlign = 'left';
-    ctx.fillText('MINIMAPA', mx + 4, my + SIZE + 12);
 }
 
-// ─── COOLDOWN HABILIDAD ───────────────────────────────────────────────────────
 function drawAbilityCooldown() {
     const self = getSelf();
     if (!self) return;
@@ -375,13 +340,11 @@ function drawAbilityCooldown() {
     const pct = abilityCooldownMax > 0 ? abilityCooldownMs / abilityCooldownMax : 0;
     const ready = pct <= 0;
 
-    // Círculo fondo
     ctx.beginPath();
     ctx.arc(cx, cy, r, 0, Math.PI * 2);
     ctx.fillStyle = 'rgba(0,0,0,0.7)';
     ctx.fill();
 
-    // Arco de cooldown
     if (!ready) {
         ctx.beginPath();
         ctx.arc(cx, cy, r, -Math.PI/2, -Math.PI/2 + (1-pct) * Math.PI * 2);
@@ -399,40 +362,28 @@ function drawAbilityCooldown() {
         ctx.shadowBlur = 0;
     }
 
-    // Nombre de la habilidad
     const name = shapeAbilityName(self.shape);
     ctx.fillStyle = ready ? '#00ff88' : '#aaa';
     ctx.font = 'bold 10px Orbitron, sans-serif';
     ctx.textAlign = 'center';
     ctx.fillText(name, cx, cy + 4);
-
-    // Tecla
-    ctx.fillStyle = 'rgba(255,255,255,0.5)';
-    ctx.font = '9px Rajdhani, sans-serif';
-    ctx.fillText('[E / SPACE]', cx, cy + r + 14);
 }
 
-// ─── HUD PRINCIPAL ────────────────────────────────────────────────────────────
 function updateHUD(data) {
     const self = getSelf();
-
-    // Jugadores vivos
     const aliveEl = document.getElementById('hud-alive');
     if (aliveEl) aliveEl.innerText = data.alive;
 
     if (!self) return;
 
-    // Barra de vida
     const hpEl  = document.getElementById('hud-hp-fill');
     const hpTxt = document.getElementById('hud-hp-text');
     if (hpEl) hpEl.style.width = Math.max(0, (self.hp / self.maxHp) * 100) + '%';
     if (hpTxt) hpTxt.innerText = `${Math.max(0, Math.floor(self.hp))} / ${self.maxHp}`;
 
-    // Kills
     const killsEl = document.getElementById('hud-kills');
     if (killsEl) killsEl.innerText = self.kills;
 
-    // Tabla de kills
     const tbody = document.getElementById('kills-table-body');
     if (tbody) {
         const sorted = [...data.players].filter(p => p.alive).sort((a,b) => b.kills - a.kills).slice(0, 8);
@@ -446,7 +397,6 @@ function updateHUD(data) {
     }
 }
 
-// ─── PANTALLAS FINALES ────────────────────────────────────────────────────────
 function showDeathScreen(kills, position) {
     const el = document.getElementById('screen-dead');
     if (!el) return;
@@ -478,7 +428,6 @@ function showEndScreen(data) {
     el.style.display = 'flex';
 }
 
-// ─── UTILS ────────────────────────────────────────────────────────────────────
 function getSelf() {
     if (!gameState) return null;
     return gameState.players.find(p => p.id === selfId) || null;
