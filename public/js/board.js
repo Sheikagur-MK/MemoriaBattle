@@ -1,10 +1,7 @@
 // ── RENDERIZADOR DEL TABLERO ──────────────────────────────────────────────────
 class BoardRenderer {
   constructor(canvasId) {
-    setPlayers(players) {
     
-      
-    this.players = players;
     this.canvas = document.getElementById(canvasId);
     this.ctx    = this.canvas.getContext('2d');
     this.board  = [];
@@ -19,6 +16,11 @@ class BoardRenderer {
     this.resize();
     this._initInput();
     window.addEventListener('resize', () => this.resize());
+  }
+  // 1. AGREGA LA FUNCIÓN AQUÍ (Fuera del constructor)
+  setPlayers(players) {
+    this.players = players;
+    // Opcional: podrías llamar a una función de redibujado aquí si fuera necesario
   }
 
   resize() {
