@@ -2,15 +2,15 @@
 const G = (() => {
 
   // ── ESTADO ────────────────────────────────────────────────
-  let socket       = null;
-  let user         = null;
-  let currentLobby = null;
-  let currentGame  = null;
-  let boardRender  = null;
-  let mgEngine     = null;
-  let csTimer      = null;
-  let queueInterval= null;
-  let myAnimal     = null;
+  let socket        = null;
+  let user          = null;
+  let currentLobby  = null;
+  let currentGame   = null;
+  let boardRender   = null;
+  let mgEngine      = null;
+  let csTimer       = null;
+  let queueInterval = null;
+  let myAnimal      = null;
 
   // ── SONIDO ────────────────────────────────────────────────
   const Audio = {
@@ -42,6 +42,7 @@ const G = (() => {
   // ── TOAST ─────────────────────────────────────────────────
   function toast(msg, type = '') {
     const el  = document.getElementById('toast');
+    if (!el) return;
     const div = document.createElement('div');
     div.className = `toast-msg ${type}`;
     div.textContent = msg;
@@ -96,19 +97,20 @@ const G = (() => {
   // ── LOBBY ─────────────────────────────────────────────────
   function refreshLobbyUI() {
     if (!user) return;
-    document.getElementById('u-name').textContent        = user.username;
-    document.getElementById('u-stats').textContent       = `Victorias: ${user.wins} · Partidas: ${user.gamesPlayed}`;
-    document.getElementById('u-palmeras').textContent    = user.palmeras;
-    document.getElementById('stat-wins').textContent     = user.wins;
-    document.getElementById('stat-games').textContent    = user.gamesPlayed;
-    document.getElementById('shop-palmeras').textContent = user.palmeras + ' 🌴';
+    const updateText = (id, txt) => { const el = document.getElementById(id); if(el) el.textContent = txt; };
+    
+    updateText('u-name', user.username);
+    updateText('u-stats', `Victorias: ${user.wins} · Partidas: ${user.gamesPlayed}`);
+    updateText('u-palmeras', user.palmeras);
+    updateText('stat-wins', user.wins);
+    updateText('stat-games', user.gamesPlayed);
+    updateText('shop-palmeras', user.palmeras + ' 🌴');
 
-    // Avatar
     const animal = ANIMALS_DATA[myAnimal || 'leon'];
-    document.getElementById('user-avatar').textContent        = animal.emoji;
-    document.getElementById('lobby-animal').textContent       = animal.emoji;
-    document.getElementById('lobby-animal-name').textContent  = animal.name;
-    document.getElementById('lobby-skin-name').textContent    = `Skin: ${user.activeSkin || 'Default'}`;
+    updateText('user-avatar', animal.emoji);
+    updateText('lobby-animal', animal.emoji);
+    updateText('lobby-animal-name', animal.name);
+    updateText('lobby-skin-name', `Skin: ${user.activeSkin || 'Default'}`);
   }
 
   // ── COLA ──────────────────────────────────────────────────
@@ -116,7 +118,6 @@ const G = (() => {
     if (!user) return toast('Debes iniciar sesión.', 'err');
     socket.emit('join_queue');
     showScreen('screen-queue');
-    // Dots animados
     let dotIdx = 0;
     queueInterval = setInterval(() => {
       document.querySelectorAll('.dot').forEach((d,i) => d.classList.toggle('active', i === dotIdx));
@@ -135,6 +136,7 @@ const G = (() => {
   // ── SELECCIÓN DE PERSONAJE ────────────────────────────────
   function renderCharSel(players) {
     const grid = document.getElementById('animals-grid');
+    if (!grid) return;
     const taken = players.filter(p => p.id !== socket.id).map(p => p.animal).filter(Boolean);
 
     grid.innerHTML = Object.entries(ANIMALS_DATA).map(([key, a]) => {
@@ -148,8 +150,9 @@ const G = (() => {
       </div>`;
     }).join('');
 
-    const ready  = players.filter(p => p.ready).length;
-    document.getElementById('cs-players').textContent = `${ready}/${players.length} jugadores listos`;
+    const ready = players.filter(p => p.ready).length;
+    const csPlayers = document.getElementById('cs-players');
+    if(csPlayers) csPlayers.textContent = `${ready}/${players.length} jugadores listos`;
   }
 
   function selectAnimal(key) {
@@ -164,78 +167,56 @@ const G = (() => {
     currentGame = data.gameId;
     showScreen('screen-game');
 
-    // Iniciar canvas tablero
     const canvas = document.getElementById('game-canvas');
-    canvas.style.display = 'block';
-    boardRender = new BoardRenderer('game-canvas');
-    boardRender.board = data.board;
-    boardRender.initPlayers(data.players);
-    boardRender.startRender();
+    if (canvas) {
+        canvas.style.display = 'block';
+        boardRender = new BoardRenderer('game-canvas');
+        boardRender.board = data.board;
+        boardRender.initPlayers(data.players);
+        boardRender.startRender();
+        
+        boardRender.targetCamX = window.innerWidth  / 2 - 50;
+        boardRender.targetCamY = window.innerHeight / 2 - 50;
+    }
 
-    // HUD
     updateHUD(data);
-
-    // Centrar cámara en mi jugador
-    boardRender.targetCamX = window.innerWidth  / 2 - 50;
-    boardRender.targetCamY = window.innerHeight / 2 - 50;
-
-    // Mostrar dado al jugador cuyo turno es
     checkMyTurn(data);
   }
 
   function updateHUD(data) {
     if (!data) return;
 
-    // Actualizar Ronda
     const roundEl = document.getElementById('hud-round');
-    if (roundEl) {
-        roundEl.textContent = `Ronda ${data.round || 1}/${data.maxRounds || 10}`;
-    }
+    if (roundEl) roundEl.textContent = `Ronda ${data.round || 1}/${data.maxRounds || 10}`;
 
-    // Actualizar Barra de Progreso (si existe)
     const bar = document.getElementById('hud-bar');
-    if (bar && data.progress !== undefined) {
-        bar.style.width = `${data.progress}%`;
+    if (bar) {
+        let html = '';
+        Object.values(data.players || {}).forEach(p => {
+          const animal = ANIMALS_DATA[p.animal] || {};
+          html += `<div class="hud-player" style="border-left:3px solid ${p.color || '#fff'}">
+            <span class="hud-player-emoji">${animal.emoji || '🐾'}</span>
+            <span>${p.username.slice(0,8)}</span>
+            <span style="color:#FFD700;font-weight:900">🍌${p.bananas || 0}</span>
+            ${p.superBananas > 0 ? `<span style="color:gold">⭐${p.superBananas}</span>` : ''}
+          </div>`;
+        });
+        bar.innerHTML = html;
     }
 
-    // ACTUALIZACIÓN DE PUNTOS (PALMERAS)
-    // Buscamos al jugador local en los datos que vienen del servidor
     if (data.players && socket && data.players[socket.id]) {
         const misPuntos = data.players[socket.id].palmeras;
-        
-        // Actualizamos la variable local del usuario
-        if (typeof user !== 'undefined' && user) {
-            user.palmeras = misPuntos;
-        }
-
-        // Actualizamos el texto en el HTML (el contador de arriba)
+        if (user) user.palmeras = misPuntos;
         const palmerasEl = document.getElementById('u-palmeras');
-        if (palmerasEl) {
-            palmerasEl.textContent = misPuntos;
-            console.log(">>> HUD: Puntos actualizados a " + misPuntos);
-        }
+        if (palmerasEl) palmerasEl.textContent = misPuntos;
     }
-}
-
-    // Construir chips de jugadores
-    let html = `<div class="hud-round">Ronda ${data.round || 1}/${data.maxRounds || 10}</div>`;
-    Object.values(data.players || {}).forEach(p => {
-      const animal = ANIMALS_DATA[p.animal] || {};
-      html += `<div class="hud-player" style="border-left:3px solid ${p.color || '#fff'}">
-        <span class="hud-player-emoji">${animal.emoji || '🐾'}</span>
-        <span>${p.username.slice(0,8)}</span>
-        <span style="color:#FFD700;font-weight:900">🍌${p.bananas}</span>
-        ${p.superBananas > 0 ? `<span style="color:gold">⭐${p.superBananas}</span>` : ''}
-      </div>`;
-    });
-    bar.innerHTML = html;
   }
 
   function checkMyTurn(data) {
     const me = data.players?.[socket.id];
     if (!me || me.hasRolled) return;
-    // Mostrar overlay de dado
     const overlay = document.getElementById('dice-overlay');
+    if (!overlay) return;
     overlay.style.display = 'flex';
     overlay.classList.add('active');
     document.getElementById('dice-result').style.display = 'none';
@@ -245,7 +226,8 @@ const G = (() => {
 
   function rollDice() {
     Audio.dice();
-    document.getElementById('roll-btn').style.display = 'none';
+    const btn = document.getElementById('roll-btn');
+    if(btn) btn.style.display = 'none';
     socket.emit('roll_dice');
   }
 
@@ -255,22 +237,27 @@ const G = (() => {
       if (data.playerId === socket.id) boardRender.focusPlayer(socket.id);
     }
 
-    // Mostrar resultado del dado al jugador
     if (data.playerId === socket.id) {
-      const face   = ['','⚀','⚁','⚂','⚃','⚄','⚅'][data.roll] || '🎲';
-      document.getElementById('dice-face').textContent       = face;
-      document.getElementById('dice-face').style.animation   = 'none';
-      document.getElementById('dice-result').style.display   = '';
-      document.getElementById('dice-result').textContent     = `¡Sacaste ${data.roll}!`;
-
-      // Efecto de casilla
-      if (data.spaceEffect) {
-        setTimeout(() => showSpaceEffect(data.spaceEffect), 800);
+      const face = ['','⚀','⚁','⚂','⚃','⚄','⚅'][data.roll] || '🎲';
+      const faceEl = document.getElementById('dice-face');
+      const resEl = document.getElementById('dice-result');
+      if (faceEl) {
+          faceEl.textContent = face;
+          faceEl.style.animation = 'none';
+      }
+      if (resEl) {
+          resEl.style.display = '';
+          resEl.textContent = `¡Sacaste ${data.roll}!`;
       }
 
+      if (data.spaceEffect) setTimeout(() => showSpaceEffect(data.spaceEffect), 800);
+
       setTimeout(() => {
-        document.getElementById('dice-overlay').classList.remove('active');
-        document.getElementById('dice-overlay').style.display = '';
+        const overlay = document.getElementById('dice-overlay');
+        if (overlay) {
+            overlay.classList.remove('active');
+            overlay.style.display = '';
+        }
       }, 2200);
     }
   }
@@ -285,37 +272,29 @@ const G = (() => {
     if (effect.type === 'supermini') toast('💜 ¡Super Minijuego activado!', 'ok');
   }
 
-  // ── MINIJUEGO INCOMING ────────────────────────────────────
+  // ── MINIJUEGO ─────────────────────────────────────────────
   function showMinigameIncoming(data) {
     const overlay = document.getElementById('mg-overlay');
+    if(!overlay) return;
     overlay.classList.add('active');
 
     const badge = document.getElementById('mg-type-badge');
-    const mg    = data.type === 'super'
-      ? SUPER_MINIGAMES.find(m => m.id === data.minigameId)
-      : MINIGAMES.find(m => m.id === data.minigameId);
+    const mg = data.type === 'super' ? SUPER_MINIGAMES.find(m => m.id === data.minigameId) : MINIGAMES.find(m => m.id === data.minigameId);
 
-    badge.className   = `mg-type-badge mg-type-${data.type === 'super' ? 'super' : 'normal'}`;
-    badge.textContent = data.type === 'super' ? '⚡ SUPER MINIJUEGO ⚡' : '🎮 MINIJUEGO';
-    document.getElementById('mg-title').textContent    = mg?.name    || 'Minijuego';
-    document.getElementById('mg-subtitle').textContent = mg?.desc    || 'Prepárate...';
-
-    // Equipos
-    const teamDiv = document.getElementById('team-display');
-    if (data.type === 'super' && data.redTeam && data.blueTeam) {
-      teamDiv.style.display = 'flex';
-      document.getElementById('team-red-members').textContent  = data.redTeam.join(', ').slice(0,40);
-      document.getElementById('team-blue-members').textContent = data.blueTeam.join(', ').slice(0,40);
-    } else {
-      teamDiv.style.display = 'none';
+    if(badge) {
+        badge.className = `mg-type-badge mg-type-${data.type === 'super' ? 'super' : 'normal'}`;
+        badge.textContent = data.type === 'super' ? '⚡ SUPER MINIJUEGO ⚡' : '🎮 MINIJUEGO';
     }
+    document.getElementById('mg-title').textContent = mg?.name || 'Minijuego';
+    document.getElementById('mg-subtitle').textContent = mg?.desc || 'Prepárate...';
 
-    // Countdown
     let count = data.countdown || 5;
-    document.getElementById('mg-countdown').textContent = count;
+    const countEl = document.getElementById('mg-countdown');
+    if(countEl) countEl.textContent = count;
+    
     const interval = setInterval(() => {
       count--;
-      document.getElementById('mg-countdown').textContent = count;
+      if(countEl) countEl.textContent = count;
       Audio.pop();
       if (count <= 0) {
         clearInterval(interval);
@@ -327,18 +306,18 @@ const G = (() => {
 
   function startMinigameCanvas(data, mgData) {
     const screen = document.getElementById('mg-game-screen');
-    screen.classList.add('active');
+    if(screen) screen.classList.add('active');
     document.getElementById('mg-game-name').textContent = mgData?.name || 'Minijuego';
 
-    const players = currentGame ? Object.values(window._gameState?.players || {}) : [];
+    const playerList = window._gameState?.players ? Object.values(window._gameState.players) : [];
 
     mgEngine = new MinigameEngine(
       'mg-canvas',
       socket.id,
-      players.length > 0 ? players : [{ id: socket.id, username: user?.username || 'Tú', animal: myAnimal || 'leon' }],
+      playerList.length > 0 ? playerList : [{ id: socket.id, username: user?.username || 'Tú', animal: myAnimal || 'leon' }],
       mgData || { id: data.minigameId, type: 'tap', dur: 20, name: 'Minijuego' },
       (results) => {
-        screen.classList.remove('active');
+        if(screen) screen.classList.remove('active');
         showMinigameResult(results, mgData);
       }
     );
@@ -347,160 +326,51 @@ const G = (() => {
 
   function showMinigameResult(results, mgData) {
     const overlay = document.getElementById('result-overlay');
+    if(!overlay) return;
     overlay.classList.add('active');
 
-    const players  = window._gameState?.players || {};
-    const winner   = players[results.winner];
-    const second   = players[results.second];
-    const third    = players[results.third];
-
+    const players = window._gameState?.players || {};
+    const winner = players[results.winner];
     document.getElementById('result-trophy').textContent = results.winner === socket.id ? '🏆' : '😢';
-    document.getElementById('result-title').textContent  = results.winner === socket.id ? '¡Ganaste!' : '¡Fin del minijuego!';
+    document.getElementById('result-title').textContent = results.winner === socket.id ? '¡Ganaste!' : '¡Fin!';
 
     const list = document.getElementById('result-list');
-    list.innerHTML = '';
-    const podium = [
-      { player: winner, cls: 'first',  pos: '🥇', reward: 10 },
-      { player: second, cls: 'second', pos: '🥈', reward: 8  },
-      { player: third,  cls: 'third',  pos: '🥉', reward: 6  },
-    ];
-    podium.forEach(({ player, cls, pos, reward }) => {
-      if (!player) return;
-      const li = document.createElement('li');
-      li.className = `result-item ${cls}`;
-      li.innerHTML = `<span class="result-pos">${pos}</span>
-        <span class="result-name">${player.username || '?'}</span>
-        <span class="result-reward">+${reward} 🍌</span>`;
-      list.appendChild(li);
-    });
-
-    document.getElementById('result-rewards').textContent = '🥇+10  🥈+8  🥉+6 🍌';
-
-    // Enviar resultado al servidor (solo el host)
-    const playerIds = Object.keys(players);
-    if (playerIds[0] === socket.id) {
-      socket.emit('minigame_result', results);
+    if(list) {
+        list.innerHTML = `<li class="result-item first"><span class="result-name">${winner?.username || 'Ganador'}</span></li>`;
     }
 
-    if (results.winner === socket.id) Audio.win();
-    else Audio.lose();
+    if (Object.keys(players)[0] === socket.id) socket.emit('minigame_result', results);
+    if (results.winner === socket.id) Audio.win(); else Audio.lose();
   }
 
   function continueGame() {
-    document.getElementById('result-overlay').classList.remove('active');
-    if (mgEngine) { mgEngine.destroy(); mgEngine = null; }
+    const resOver = document.getElementById('result-overlay');
+    if(resOver) resOver.classList.remove('active');
+    if (mgEngine) { mgEngine.stop?.(); mgEngine = null; }
   }
 
   // ── FIN DE PARTIDA ────────────────────────────────────────
   function showGameOver(data) {
     showScreen('screen-gameover');
     const rankEl = document.getElementById('final-rank');
+    if(!rankEl) return;
     rankEl.innerHTML = '';
-
-    const medals = ['🥇','🥈','🥉','4️⃣','5️⃣','6️⃣','7️⃣','8️⃣'];
-    let myPalmeras = 0;
-
     data.ranking.forEach((p, i) => {
-      const palmeras = [3,2,1][i] || 0;
-      if (p.id === socket.id) myPalmeras = palmeras;
       const div = document.createElement('div');
       div.className = `rank-row rank-${i+1}`;
-      const animal = ANIMALS_DATA[p.animal] || {};
-      div.innerHTML = `
-        <div class="rank-emoji">${medals[i] || '·'}</div>
-        <div class="rank-emoji">${animal.emoji || '🐾'}</div>
-        <div class="rank-info">
-          <div class="rank-name">${p.username}</div>
-          <div class="rank-stats">⭐${p.superBananas} Super · 🍌${p.bananas}</div>
-        </div>
-        ${palmeras > 0 ? `<div class="rank-palmeras">+${palmeras} 🌴</div>` : ''}`;
+      div.innerHTML = `<span>${i+1}. ${p.username} - ⭐${p.superBananas}</span>`;
       rankEl.appendChild(div);
     });
-
-    document.getElementById('palmeras-earned').textContent = `+${myPalmeras} 🌴`;
-    if (myPalmeras > 0) { user.palmeras += myPalmeras; refreshLobbyUI(); }
-    if (data.ranking[0]?.id === socket.id) Audio.win();
-    else Audio.lose();
+    if (data.ranking[0]?.id === socket.id) Audio.win(); else Audio.lose();
   }
 
   function backToLobby() {
     currentGame = null; currentLobby = null;
-    if (boardRender) { boardRender = null; }
-    document.getElementById('game-canvas').style.display = 'none';
+    boardRender = null;
+    const canvas = document.getElementById('game-canvas');
+    if(canvas) canvas.style.display = 'none';
     showScreen('screen-lobby');
     refreshLobbyUI();
-  }
-
-  // ── TIENDA ────────────────────────────────────────────────
-  function renderShop() {
-    const grid = document.getElementById('skins-grid');
-    grid.innerHTML = SKINS_DATA.map(skin => {
-      const owned  = user?.ownedSkins?.includes(skin.id);
-      const active = user?.activeSkin === skin.id;
-      return `<div class="skin-card ${owned ? 'owned' : ''} ${active ? 'active' : ''}">
-        <div class="skin-emoji">${skin.emoji}</div>
-        <div class="skin-name">${skin.name}</div>
-        <div class="skin-price">${skin.price === 0 ? 'Gratis' : `${skin.price} 🌴`}</div>
-        ${active ? '<div class="skin-status active">✓ Activo</div>' :
-          owned   ? `<button class="btn btn-secondary btn-sm" onclick="G.equipSkin('${skin.id}')">Equipar</button>` :
-          `<button class="btn btn-primary btn-sm" onclick="G.buySkin('${skin.id}')">${skin.price === 0 ? 'Equipar' : 'Comprar'}</button>`}
-      </div>`;
-    }).join('');
-  }
-
-  function buySkin(skinId) {
-    if (skinId === 'default') return equipSkin(skinId);
-    socket.emit('buy_skin', { skin: skinId });
-  }
-
-  function equipSkin(skinId) {
-    socket.emit('equip_skin', { skin: skinId });
-  }
-
-  // ── LEADERBOARD ───────────────────────────────────────────
-  function loadLeaderboard() {
-    socket.emit('get_leaderboard');
-  }
-
-  function renderLeaderboard(data) {
-    const el = document.getElementById('lb-list');
-    if (!data || data.length === 0) { el.textContent = 'Sin datos aún.'; return; }
-    const medals = ['🥇','🥈','🥉'];
-    el.innerHTML = data.map((p, i) =>
-      `<div class="lb-row">
-        <div class="lb-pos">${medals[i] || (i+1)}</div>
-        <div class="lb-name">${p.username}</div>
-        <div class="lb-stat">🎮 ${p.gamesPlayed}</div>
-        <div class="lb-wins">🏆 ${p.wins}</div>
-        <div class="lb-stat">🌴 ${p.palmeras}</div>
-      </div>`
-    ).join('');
-  }
-
-  // ── MIS ESTADÍSTICAS ──────────────────────────────────────
-  function showStats() {
-    if (!user) return;
-    toast(`🏆 ${user.wins} victorias · 🎮 ${user.gamesPlayed} partidas · 🌴 ${user.palmeras} palmeras`);
-  }
-
-  // ── OPCIONES ──────────────────────────────────────────────
-  function setVolume(type, val) {
-    Audio.volumes[type] = val / 100;
-    document.getElementById(`vol-${type}-val`).textContent = val + '%';
-  }
-
-  function setLang(lang) {
-    toast(`Idioma cambiado a ${lang === 'es' ? 'Español' : lang === 'en' ? 'English' : 'Português'}`);
-    // Implementación de i18n futura
-  }
-
-  function setQuality(q) {
-    toast(`Calidad gráfica: ${q === 'high' ? 'Alta' : q === 'med' ? 'Media' : 'Baja'}`);
-  }
-
-  function toggleFullscreen() {
-    if (!document.fullscreenElement) document.documentElement.requestFullscreen?.();
-    else document.exitFullscreen?.();
   }
 
   // ── INIT & SOCKET ─────────────────────────────────────────
@@ -508,205 +378,75 @@ const G = (() => {
     Audio.init();
     socket = io();
 
-    // ── EVENTOS AUTH ──────────────────────────────────────
     socket.on('auth_result', res => {
       if (res.ok && res.user) {
         user = res.user;
-        myAnimal = null;
         refreshLobbyUI();
-        renderShop();
         showScreen('screen-lobby');
-        toast(`¡Bienvenido de vuelta, ${user.username}! 🍌`, 'ok');
-        Audio.win();
-      } else if (res.ok) {
-        toast(res.msg, 'ok');
-        switchTab('login');
+        toast(`¡Hola ${user.username}!`, 'ok');
       } else {
-        toast(res.msg || 'Error.', 'err');
+        toast(res.msg || 'Error', 'err');
       }
     });
 
-    socket.on('error_msg', msg => toast(msg, 'err'));
-
-    // ── COLA ──────────────────────────────────────────────
-    socket.on('queue_update', data => {
-      document.getElementById('q-timer').textContent   = data.timeLeft;
-      document.getElementById('q-players').innerHTML   = `Jugadores encontrados: <strong>${data.players}</strong> / 8`;
-      // Activar dots
-      for (let i = 0; i < 8; i++) {
-        const d = document.getElementById(`dot-${i}`);
-        if (d) d.classList.toggle('active', i < data.players);
-      }
-    });
-
-    // ── LOBBY PARTIDA ─────────────────────────────────────
     socket.on('lobby_created', data => {
       currentLobby = data.lobbyId;
       clearInterval(queueInterval);
       showScreen('screen-charsel');
       renderCharSel(data.players);
-
-      // Timer de selección
-      let t = data.timeLeft || 25;
-      document.getElementById('cs-timer').textContent = t;
-      csTimer = setInterval(() => {
-        t--;
-        document.getElementById('cs-timer').textContent = Math.max(0, t);
-        if (t <= 0) clearInterval(csTimer);
-      }, 1000);
     });
 
-    socket.on('lobby_update', data => renderCharSel(data.players));
-
-    socket.on('animal_taken', data => toast(`${ANIMALS_DATA[data.animal]?.name} ya fue elegido. ¡Prueba otro!`, 'err'));
-
-    // ── JUEGO ─────────────────────────────────────────────
     socket.on('game_start', data => {
-      clearInterval(csTimer);
       window._gameState = data;
       initGame(data);
-      toast('¡La partida ha comenzado! 🎲');
     });
 
     socket.on('player_moved', data => {
       if (window._gameState?.players?.[data.playerId]) {
         window._gameState.players[data.playerId].position = data.newPos;
-        window._gameState.players[data.playerId].bananas  = data.bananas;
+        window._gameState.players[data.playerId].bananas = data.bananas;
       }
       onPlayerMoved(data);
-      if (boardRender) updateHUD(window._gameState);
+      updateHUD(window._gameState);
     });
 
-    socket.on('next_round', data => {
-      window._gameState = { ...window._gameState, ...data };
-      updateHUD(data);
-      toast(`🎲 Ronda ${data.round} de ${data.maxRounds}`);
-      checkMyTurn(data);
-    });
+    socket.on('minigame_incoming', data => showMinigameIncoming(data));
 
-    socket.on('buy_result', data => {
-      if (data.success) {
-        toast('⭐ ¡Super Banana comprada!', 'ok');
-        Audio.win();
-        if (window._gameState?.players?.[socket.id]) {
-          window._gameState.players[socket.id].bananas      = data.bananas;
-          window._gameState.players[socket.id].superBananas = data.superBananas;
-        }
-        updateHUD(window._gameState);
-      } else {
-        toast(data.msg, 'err');
-      }
-    });
+    socket.on('round_ready', data => {
+      console.log(">>> Volviendo al tablero...");
+      if (mgEngine) { try { mgEngine.stop(); } catch(e){} mgEngine = null; }
 
-    socket.on('minigame_incoming', data => {
-      showMinigameIncoming(data);
-    });
-
-    socket.on('minigame_result', data => {
-      if (window._gameState) {
-        window._gameState.players = data.players || window._gameState.players;
-      }
-    });
-
-    socket.on('player_disconnected', data => {
-      toast(`Un jugador se desconectó.`, 'err');
-      if (window._gameState?.players?.[data.playerId]) {
-        window._gameState.players[data.playerId].disconnected = true;
-      }
-    });
-
-    socket.on('game_over', data => {
-      window._gameState = null;
-      showGameOver(data);
-    });
-
-    // ── TIENDA ────────────────────────────────────────────
-    socket.on('shop_result', data => {
-      if (data.ok) {
-        toast('¡Skin comprada! 🎨', 'ok');
-        user.palmeras    = data.palmeras;
-        user.ownedSkins  = data.ownedSkins;
-        document.getElementById('u-palmeras').textContent    = user.palmeras;
-        document.getElementById('shop-palmeras').textContent = user.palmeras + ' 🌴';
-        renderShop();
-        Audio.coin();
-      } else {
-        toast(data.msg, 'err');
-      }
-    });
-
-    socket.on('skin_equipped', data => {
-      user.activeSkin = data.activeSkin;
-      toast(`Skin "${data.activeSkin}" equipada ✓`, 'ok');
-      renderShop();
-      refreshLobbyUI();
-    });
-
-    // ── LEADERBOARD ───────────────────────────────────────
-    socket.on('leaderboard_data', data => renderLeaderboard(data));
-
-    socket.on('disconnect', () => toast('Desconectado del servidor. Reconectando...', 'err'));
-    socket.on('connect',    () => { if (user) toast('Reconectado ✓', 'ok'); });
-
-socket.on('round_ready', data => {
-  // 1. Detener minijuego de forma segura
-  if (typeof mgEngine !== 'undefined' && mgEngine) {
-    mgEngine.stop();
-    mgEngine = null;
-  }
-
-  // 2. Actualizar datos globales (Importante para los puntos)
-  currentGame.players = data.players;
-  
-  // 3. Actualizar el render si existe, si es null no pasa nada (evita el error)
-  if (boardRender) {
-    boardRender.players = data.players;
-  }
-
-  // 4. Volver a la pantalla y REFRESCAR la UI
-  showScreen('screen-game');
-  updateTurnUI(data.activePlayer);
-  
-  // --- AGREGA ESTO PARA VER TUS PUNTOS ACTUALIZADOS ---
-  if (user && data.players[socket.id]) {
-    user.palmeras = data.players[socket.id].palmeras;
-    const palmerasEl = document.getElementById('u-palmeras');
-    if (palmerasEl) palmerasEl.textContent = user.palmeras;
-  }
-  
-  console.log(">>> Ronda terminada. Puntos actualizados.");
-});
-
-      // 2. Actualizamos los datos de los jugadores (por si ganaron bananas)
-      currentGame.players = data.players;
-      
-      // 3. Refrescamos el tablero con las nuevas posiciones/puntos
-      if (boardRender) {
-        boardRender.setPlayers(data.players);
+      if (data && data.players) {
+          currentGame = currentGame || {};
+          currentGame.players = data.players;
+          if (window._gameState) window._gameState.players = data.players;
       }
 
-      // 4. Quitamos la pantalla del minijuego y volvemos al tablero
+      if (boardRender) boardRender.players = data.players;
+
       showScreen('screen-game');
-
-      // 5. Actualizamos de quién es el turno (normalmente el jugador 1 de nuevo)
-      updateTurnUI(data.activePlayer);
+      // Actualizar turno y HUD
+      if (typeof updateTurnUI === 'function') updateTurnUI(data.activePlayer);
+      updateHUD(data);
       
-      console.log(">>> Ronda lista. Volviendo al tablero...");
+      if (user && data.players[socket.id]) {
+          user.palmeras = data.players[socket.id].palmeras;
+          const pEl = document.getElementById('u-palmeras');
+          if(pEl) pEl.textContent = user.palmeras;
       }
+    });
 
-  // ── API PÚBLICA ───────────────────────────────────────────
+    socket.on('game_over', data => showGameOver(data));
+  }
+
   return {
     init, showAuth, showScreen, switchTab,
     doLogin, doRegister, logout,
     joinQueue, leaveQueue,
-    selectAnimal,
-    rollDice,
-    continueGame,
-    backToLobby,
-    loadLeaderboard,
-    buySkin, equipSkin,
-    showStats,
-    setVolume, setLang, setQuality, toggleFullscreen,
-    mgEngine,
+    selectAnimal, rollDice,
+    continueGame, backToLobby
   };
 })();
+
+// Iniciar
+G.init();
