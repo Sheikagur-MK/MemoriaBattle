@@ -1,129 +1,88 @@
 require('dotenv').config();
-const express   = require('express');
-const http      = require('http');
-const { Server }= require('socket.io');
-const mongoose  = require('mongoose');
-const bcrypt    = require('bcryptjs');
-const path      = require('path');
+const express    = require('express');
+const http       = require('http');
+const { Server } = require('socket.io');
+const mongoose   = require('mongoose');
+const bcrypt     = require('bcryptjs');
+const path       = require('path');
 
 const app    = express();
 const server = http.createServer(app);
 const io     = new Server(server, { cors: { origin: '*' } });
 
-// ── MONGODB ──────────────────────────────────────────────────────────────────
 mongoose.connect(process.env.MONGODB_URI)
   .then(() => console.log('>>> [DB] Conectado'))
   .catch(e  => console.error('>>> [DB] Error:', e.message));
 
 const UserSchema = new mongoose.Schema({
-  username:   { type: String, unique: true, required: true },
-  password:   { type: String, required: true },
-  palmeras:   { type: Number, default: 0 },
-  wins:       { type: Number, default: 0 },
-  gamesPlayed:{ type: Number, default: 0 },
-  ownedSkins: { type: [String], default: ['default'] },
-  activeSkin: { type: String, default: 'default' },
-  createdAt:  { type: Date, default: Date.now }
+  username:    { type: String, unique: true, required: true },
+  password:    { type: String, required: true },
+  palmeras:    { type: Number, default: 0 },
+  wins:        { type: Number, default: 0 },
+  gamesPlayed: { type: Number, default: 0 },
+  ownedSkins:  { type: [String], default: ['default'] },
+  activeSkin:  { type: String,  default: 'default' },
 });
 const User = mongoose.model('User', UserSchema);
 
 app.use(express.static(path.join(__dirname, 'public')));
-app.use(express.json());
+app.get('*', (_req, res) =>
+  res.sendFile(path.join(__dirname, 'public', 'index.html')));
 
-// Redirigir rutas no estáticas al index
-app.get('*', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'index.html'));
-});
+// ── CONSTANTES ────────────────────────────────────────────────────────────────
+const BOARD_SIZE     = 70;
+const TURNS_PER_GAME = 10;
+const MATCHMAKE_MS   = 20000;
+const CHARSEL_MS     = 25000;
+const MG_TOTAL_MS    = 32000; // 5s countdown + 25s juego + 2s margen
+const MG_RESULT_MS   = 5000;  // pausa antes de siguiente ronda
 
-// ── CONSTANTES DEL JUEGO ─────────────────────────────────────────────────────
-const BOARD_SIZE        = 70;
-const BLUE_SPACES       = 20;
-const RED_SPACES        = 20;
-const STAR_SPACES       = 2;   // super banana
-const SUPER_MINI_SPACES = 5;
-// El resto (70 - 20 - 20 - 2 - 5 = 23) son casillas normales
-const BANANA_BLUE       = 5;
-const BANANA_RED        = -2;
-const BANANA_MINIGAME_1 = 10;
-const BANANA_MINIGAME_2 = 8;
-const BANANA_MINIGAME_3 = 6;
-const SUPER_BANANA_COST = 50;
-const PALMERAS_1ST      = 3;
-const PALMERAS_2ND      = 2;
-const PALMERAS_3RD      = 1;
-const MATCHMAKING_TIME  = 20000; // 20 segundos
-const CHAR_SELECT_TIME  = 25000; // 25 segundos
-const TURNS_PER_GAME    = 10;    // rondas por partida
+const ANIMALS = ['leon','gorila','oso','pinguino','tiburon','orca',
+                 'elefante','girafa','perro','gato','hamster','lobo'];
+const COLORS  = ['#FF6B6B','#4ECDC4','#FFE66D','#A8E6CF',
+                 '#FF8B94','#C3A6FF','#FFD3A5','#B5EAD7'];
 
-const ANIMALS = [
-  'leon','gorila','oso','pinguino','tiburon',
-  'orca','elefante','girafa','perro','gato','hamster','lobo'
-];
-
-const MINIGAME_COUNT       = 100; // definidos en minigames.js del cliente
-const SUPER_MINIGAME_COUNT = 25;
-
-// ── GENERADOR DE TABLERO ALEATORIO ────────────────────────────────────────────
+// ── TABLERO ───────────────────────────────────────────────────────────────────
 function generateBoard() {
   const types = [];
-  for (let i = 0; i < BLUE_SPACES;       i++) types.push('blue');
-  for (let i = 0; i < RED_SPACES;        i++) types.push('red');
-  for (let i = 0; i < STAR_SPACES;       i++) types.push('star');
-  for (let i = 0; i < SUPER_MINI_SPACES; i++) types.push('supermini');
-  while (types.length < BOARD_SIZE)           types.push('normal');
-
-  // Fisher-Yates shuffle
+  for (let i = 0; i < 20; i++) types.push('blue');
+  for (let i = 0; i < 20; i++) types.push('red');
+  for (let i = 0; i < 2;  i++) types.push('star');
+  for (let i = 0; i < 5;  i++) types.push('supermini');
+  while (types.length < BOARD_SIZE) types.push('normal');
+  // shuffle
   for (let i = types.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
     [types[i], types[j]] = [types[j], types[i]];
   }
-
-  // Asignar biomas — 70 casillas divididas en 5 biomas de 14 cada uno
   const biomes = ['fauna','desierto','bosque','selva','artico'];
   return types.map((type, idx) => ({
-    id: idx,
-    type,
+    id: idx, type,
     biome: biomes[Math.floor(idx / 14)]
   }));
 }
 
 // ── ESTADO GLOBAL ─────────────────────────────────────────────────────────────
-const queue    = [];
-const lobbies  = {};  // sala de espera antes de la partida
-const games    = {};  // partidas activas
-let   gameCounter = 0;
+let queue = [], lobbies = {}, games = {}, counter = 0;
+let matchTimer = null, matchStart = null;
 
-// ── MATCHMAKING ───────────────────────────────────────────────────────────────
-let matchTimer = null;
-let matchStart = null;
-
+// ── COLA ──────────────────────────────────────────────────────────────────────
 function broadcastQueue() {
-  const count = queue.length;
-  queue.forEach(sid => {
-    io.to(sid).emit('queue_update', {
-      players: count,
-      timeLeft: matchStart ? Math.max(0, Math.ceil((matchStart + MATCHMAKING_TIME - Date.now()) / 1000)) : MATCHMAKING_TIME / 1000
-    });
-  });
+  const tl = matchStart
+    ? Math.max(0, Math.ceil((matchStart + MATCHMAKE_MS - Date.now()) / 1000))
+    : MATCHMAKE_MS / 1000;
+  queue.forEach(sid =>
+    io.to(sid).emit('queue_update', { players: queue.length, timeLeft: tl }));
 }
 
 function tryStartMatch() {
-  // Necesitamos mínimo 2 y siempre número par
   if (queue.length < 2) return;
-
-  // Tomar la cantidad par más grande posible (máx 8)
   let count = Math.min(8, queue.length);
-  if (count % 2 !== 0) count--;   // asegurar par
+  if (count % 2 !== 0) count--;
   if (count < 2) return;
-
-  clearTimeout(matchTimer);
-  matchTimer = null;
-  matchStart = null;
-
-  const participants = queue.splice(0, count);
-  createLobby(participants);
-
-  // Si quedan 2+ en cola, reiniciar matchmaking
+  clearTimeout(matchTimer); matchTimer = null; matchStart = null;
+  const ids = queue.splice(0, count);
+  createLobby(ids);
   if (queue.length >= 2) startMatchmaking();
 }
 
@@ -131,66 +90,68 @@ function startMatchmaking() {
   if (matchTimer) return;
   matchStart = Date.now();
   broadcastQueue();
-
   matchTimer = setTimeout(() => {
-    matchTimer = null;
-    matchStart = null;
+    matchTimer = null; matchStart = null;
     tryStartMatch();
-  }, MATCHMAKING_TIME);
+  }, MATCHMAKE_MS);
 }
 
 function addToQueue(sid) {
-  if (!queue.includes(sid)) {
-    queue.push(sid);
-    if (!matchTimer && queue.length >= 2) startMatchmaking();
-    else broadcastQueue();
-  }
+  if (queue.includes(sid)) return;
+  queue.push(sid);
+  if (!matchTimer && queue.length >= 2) startMatchmaking();
+  else broadcastQueue();
 }
 
 function removeFromQueue(sid) {
-  const idx = queue.indexOf(sid);
-  if (idx !== -1) queue.splice(idx, 1);
+  queue = queue.filter(id => id !== sid);
+  if (queue.length < 2 && matchTimer) {
+    clearTimeout(matchTimer); matchTimer = null; matchStart = null;
+  }
   broadcastQueue();
 }
 
-// ── LOBBY (SELECCIÓN DE PERSONAJE) ───────────────────────────────────────────
-function createLobby(playerIds) {
-  const lobbyId = `lobby_${++gameCounter}`;
+// ── LOBBY ─────────────────────────────────────────────────────────────────────
+function createLobby(ids) {
+  const lobbyId = `L${++counter}`;
   const players = {};
-  playerIds.forEach(sid => {
+  ids.forEach(sid => {
     const sock = io.sockets.sockets.get(sid);
     if (!sock) return;
     players[sid] = {
       id: sid,
       username: sock.userData?.username || 'Jugador',
-      animal: null,
-      ready: false
+      animal: null, ready: false
     };
     sock.join(lobbyId);
+    sock.currentLobby = lobbyId;
+    sock.currentGame  = null;
   });
-
   lobbies[lobbyId] = { id: lobbyId, players, timer: null };
 
   io.to(lobbyId).emit('lobby_created', {
     lobbyId,
     players: Object.values(players),
-    timeLeft: CHAR_SELECT_TIME / 1000
+    timeLeft: CHARSEL_MS / 1000
   });
+  console.log(`>>> [${lobbyId}] Lobby creado: ${ids.length} jugadores`);
 
-  // Temporizador de selección
+  // Auto-asignar y arrancar si no eligen a tiempo
   lobbies[lobbyId].timer = setTimeout(() => {
-    // Asignar animal aleatorio a quien no eligió
     const lobby = lobbies[lobbyId];
     if (!lobby) return;
     const taken = Object.values(lobby.players).map(p => p.animal).filter(Boolean);
-    const available = ANIMALS.filter(a => !taken.includes(a));
+    let avail   = ANIMALS.filter(a => !taken.includes(a));
     Object.values(lobby.players).forEach(p => {
       if (!p.animal) {
-        p.animal = available.splice(Math.floor(Math.random() * available.length), 1)[0] || ANIMALS[0];
+        if (!avail.length) avail = [...ANIMALS];
+        const idx = Math.floor(Math.random() * avail.length);
+        p.animal  = avail.splice(idx, 1)[0];
+        p.ready   = true;
       }
     });
     startGame(lobbyId);
-  }, CHAR_SELECT_TIME);
+  }, CHARSEL_MS);
 }
 
 // ── INICIO DE PARTIDA ─────────────────────────────────────────────────────────
@@ -199,412 +160,352 @@ function startGame(lobbyId) {
   if (!lobby) return;
   clearTimeout(lobby.timer);
 
-  const board = generateBoard();
-  const playerList = Object.values(lobby.players);
-  const gameId = lobbyId.replace('lobby_', 'game_');
-
-  const gamePlayers = {};
-  playerList.forEach((p, i) => {
-    gamePlayers[p.id] = {
-      id: p.id, username: p.username, animal: p.animal,
-      position: 0, bananas: 0, superBananas: 0,
-      color: ['#FF6B6B','#4ECDC4','#FFE66D','#A8E6CF','#FF8B94','#C3A6FF','#FFD3A5','#B5EAD7'][i % 8],
-      team: i % 2 === 0 ? 'red' : 'blue',  // equipos para super minijuego
-      hasRolled: false, turnOrder: i
-    };
-  });
-
-  const game = {
-    id: gameId, lobbyId,
-    board, players: gamePlayers,
-    currentTurn: 0,         // índice en turnOrder
-    round: 1, maxRounds: TURNS_PER_GAME,
-    phase: 'rolling',       // rolling | minigame | supermini | gameover
-    pendingMinigame: null,
-    allRolled: false,
-    superMiniActive: false,
-    superMiniBoardPos: null,
-    minigameHistory: [],
-    over: false
-  };
-
-  games[gameId] = game;
-  delete lobbies[lobbyId];
-
-  // Mover jugadores a la sala del juego
-  playerList.forEach(p => {
-    const sock = io.sockets.sockets.get(p.id);
-    if (sock) { sock.leave(lobbyId); sock.join(gameId); sock.currentGame = gameId; }
-  });
-
-  io.to(gameId).emit('game_start', {
-    gameId, board, players: gamePlayers,
-    turnOrder: playerList.map(p => p.id),
-    round: 1, maxRounds: TURNS_PER_GAME
-  });
-
-  console.log(`>>> [PARTIDA ${gameId}] Iniciada con ${playerList.length} jugadores`);
-}
-
-// ── TIRAR DADO ────────────────────────────────────────────────────────────────
-function rollDice(gameId, playerId) {
-  const game = games[gameId];
-  if (!game || game.phase !== 'rolling') return;
-  const p = game.players[playerId];
-  if (!p || p.hasRolled) return;
-
-  const roll = Math.floor(Math.random() * 6) + 1;
-  p.position = (p.position + roll) % BOARD_SIZE;
-  p.hasRolled = true;
-
-  const space = game.board[p.position];
-
-  // Aplicar efecto de casilla
-  let spaceEffect = null;
-  if (space.type === 'blue') {
-    p.bananas += BANANA_BLUE;
-    spaceEffect = { type: 'blue', delta: BANANA_BLUE };
-  } else if (space.type === 'red') {
-    p.bananas = Math.max(0, p.bananas + BANANA_RED);
-    spaceEffect = { type: 'red', delta: BANANA_RED };
-  } else if (space.type === 'star') {
-    spaceEffect = { type: 'star' };  // se maneja al comprar
-  } else if (space.type === 'supermini') {
-    spaceEffect = { type: 'supermini', pos: p.position };
-    game.superMiniActive = true;
-    game.superMiniBoardPos = p.position;
+  // Verificar que hay al menos 2 jugadores con animal
+  const plist = Object.values(lobby.players);
+  if (plist.length < 2) {
+    delete lobbies[lobbyId]; return;
   }
 
-  io.to(gameId).emit('player_moved', {
-    playerId, roll, newPos: p.position,
-    bananas: p.bananas, spaceEffect,
-    board: game.board[p.position]
+  const gameId    = `G${lobbyId}`;
+  const board     = generateBoard();
+  const turnOrder = [...plist].sort(() => Math.random() - 0.5).map(p => p.id);
+  const players   = {};
+
+  plist.forEach((p, i) => {
+    players[p.id] = {
+      id: p.id, username: p.username,
+      animal: p.animal || ANIMALS[i % ANIMALS.length],
+      position: 0, bananas: 0, superBananas: 0,
+      color: COLORS[i % COLORS.length],
+      team: i % 2 === 0 ? 'red' : 'blue',
+      hasRolled: false
+    };
+    const sock = io.sockets.sockets.get(p.id);
+    if (sock) {
+      sock.leave(lobbyId);
+      sock.join(gameId);
+      sock.currentLobby = null;
+      sock.currentGame  = gameId;
+    }
   });
 
-  // ¿Todos tiraron?
-  const allRolled = Object.values(game.players).every(pl => pl.hasRolled);
-  if (allRolled) {
-    game.allRolled = true;
-    setTimeout(() => triggerMinigame(gameId), 2000);
+  games[gameId] = {
+    id: gameId, board, players, turnOrder,
+    turnIdx: 0,
+    round: 1, maxRounds: TURNS_PER_GAME,
+    phase: 'rolling',     // 'rolling' | 'minigame' | 'over'
+    superMini: false,
+    mgTimer: null, over: false
+  };
+
+  delete lobbies[lobbyId];
+
+  io.to(gameId).emit('game_start', {
+    gameId, board, players, turnOrder,
+    round: 1, maxRounds: TURNS_PER_GAME,
+    currentTurn: turnOrder[0]
+  });
+
+  console.log(`>>> [${gameId}] Partida iniciada. Turno: ${players[turnOrder[0]]?.username}`);
+  setTimeout(() => emitTurn(gameId), 1800);
+}
+
+// ── TURNO ─────────────────────────────────────────────────────────────────────
+function emitTurn(gameId) {
+  const g = games[gameId];
+  if (!g || g.over) return;
+  const pid = g.turnOrder[g.turnIdx];
+  const p   = g.players[pid];
+  if (!p) { advanceTurn(gameId); return; }
+
+  io.to(gameId).emit('turn_update', {
+    currentTurn: pid,
+    round: g.round, maxRounds: g.maxRounds,
+    players: g.players
+  });
+  // Permiso al jugador activo
+  io.to(pid).emit('your_turn');
+  console.log(`>>> [${gameId}] R${g.round} Turno de: ${p.username}`);
+}
+
+// ── DADO ──────────────────────────────────────────────────────────────────────
+function handleRoll(gameId, pid) {
+  const g = games[gameId];
+  if (!g || g.phase !== 'rolling') return;
+  if (g.turnOrder[g.turnIdx] !== pid) return;
+  const p = g.players[pid];
+  if (!p || p.hasRolled) return;
+
+  const roll    = Math.floor(Math.random() * 6) + 1;
+  const prevPos = p.position;
+  p.position    = (p.position + roll) % BOARD_SIZE;
+  p.hasRolled   = true;
+
+  const space  = g.board[p.position];
+  let effect   = null;
+
+  if (space.type === 'blue')     { p.bananas = Math.max(0, p.bananas + 5);  effect = { type:'blue',  delta:+5 }; }
+  if (space.type === 'red')      { p.bananas = Math.max(0, p.bananas - 2);  effect = { type:'red',   delta:-2 }; }
+  if (space.type === 'star')     { effect = { type:'star' }; }
+  if (space.type === 'supermini'){ effect = { type:'supermini' }; g.superMini = true; }
+
+  io.to(gameId).emit('player_moved', {
+    playerId: pid, roll, prevPos,
+    newPos: p.position, bananas: p.bananas,
+    spaceEffect: effect, players: g.players
+  });
+  console.log(`>>> [${gameId}] ${p.username} ➜ ${roll} → casilla ${p.position} (${space.type})`);
+
+  setTimeout(() => advanceTurn(gameId), 2800);
+}
+
+// ── AVANZAR TURNO ─────────────────────────────────────────────────────────────
+function advanceTurn(gameId) {
+  const g = games[gameId];
+  if (!g || g.over) return;
+
+  g.turnIdx = (g.turnIdx + 1) % g.turnOrder.length;
+  const roundComplete = g.turnIdx === 0;
+
+  if (roundComplete) {
+    Object.values(g.players).forEach(p => p.hasRolled = false);
+    setTimeout(() => triggerMinigame(gameId), 1200);
+  } else {
+    emitTurn(gameId);
   }
 }
 
 // ── MINIJUEGO ─────────────────────────────────────────────────────────────────
 function triggerMinigame(gameId) {
-  const game = games[gameId];
-  if (!game || game.over) return;
+  const g = games[gameId];
+  if (!g || g.over) return;
+  g.phase = 'minigame';
 
-  const playerCount = Object.keys(game.players).length;
+  const count   = Object.values(g.players).filter(p => !p.disconnected).length;
+  const isSuper = g.superMini && count % 2 === 0;
+  const mgId    = Math.floor(Math.random() * 20) + 1;   // 20 minijuegos
+  g.superMini   = false;
 
-  if (game.superMiniActive) {
-    // Super minijuego en equipos
-    const redTeam  = Object.values(game.players).filter(p => p.team === 'red').map(p => p.id);
-    const blueTeam = Object.values(game.players).filter(p => p.team === 'blue').map(p => p.id);
-    const canDoTeams = redTeam.length > 0 && blueTeam.length > 0 && playerCount % 2 === 0;
+  const redTeam  = Object.values(g.players).filter(p => p.team === 'red').map(p => p.id);
+  const blueTeam = Object.values(g.players).filter(p => p.team === 'blue').map(p => p.id);
 
-    const mgId = Math.floor(Math.random() * SUPER_MINIGAME_COUNT) + 1;
-    game.phase = canDoTeams ? 'supermini' : 'minigame';
-    game.pendingMinigame = { id: mgId, isSuper: canDoTeams, redTeam, blueTeam };
-
-    io.to(gameId).emit('minigame_incoming', {
-      type: canDoTeams ? 'super' : 'normal',
-      minigameId: mgId,
-      redTeam, blueTeam,
-      players: playerCount,
-      countdown: 5
-    });
-    game.superMiniActive = false;
-  } else {
-    const mgId = Math.floor(Math.random() * MINIGAME_COUNT) + 1;
-    game.phase = 'minigame';
-    game.pendingMinigame = { id: mgId, isSuper: false };
-
-    io.to(gameId).emit('minigame_incoming', {
-      type: 'normal', minigameId: mgId, players: playerCount, countdown: 5
-    });
-  }
-}
-
-// ── RESULTADOS DE MINIJUEGO ───────────────────────────────────────────────────
-function resolveMinigame(gameId, results) {
-  // results: { winner: id, second: id, third: id } o { winnerTeam: 'red'|'blue' }
-  const game = games[gameId];
-  if (!game) return;
-
-  const mg = game.pendingMinigame;
-  game.minigameHistory.push({ ...mg, results, round: game.round });
-
-  if (mg.isSuper) {
-    // Super minijuego por equipos
-    const winTeam = results.winnerTeam;
-    Object.values(game.players).forEach(p => {
-      if (p.team === winTeam) {
-        p.superBananas++;  // banana dorada
-      }
-    });
-    io.to(gameId).emit('minigame_result', {
-      type: 'super', winnerTeam: winTeam,
-      players: game.players
-    });
-  } else {
-    // Minijuego normal
-    if (results.winner)  game.players[results.winner]  && (game.players[results.winner].bananas  += BANANA_MINIGAME_1);
-    if (results.second)  game.players[results.second]  && (game.players[results.second].bananas  += BANANA_MINIGAME_2);
-    if (results.third)   game.players[results.third]   && (game.players[results.third].bananas   += BANANA_MINIGAME_3);
-
-    // Si 1 solo ganador de casilla supermini en partida impar → banana dorada
-    if (game.phase === 'supermini' && results.winner) {
-      game.players[results.winner].superBananas++;
-    }
-
-    io.to(gameId).emit('minigame_result', {
-      type: 'normal',
-      winner: results.winner, second: results.second, third: results.third,
-      rewards: { first: BANANA_MINIGAME_1, second: BANANA_MINIGAME_2, third: BANANA_MINIGAME_3 },
-      players: game.players
-    });
-  }
-
-  // Siguiente ronda o fin de partida
-  game.pendingMinigame = null;
-  game.phase = 'rolling';
-  Object.values(game.players).forEach(p => p.hasRolled = false);
-
-  if (game.round >= game.maxRounds) {
-    setTimeout(() => endGame(gameId), 3000);
-  } else {
-    game.round++;
-    io.to(gameId).emit('next_round', {
-      round: game.round, maxRounds: game.maxRounds,
-      players: game.players
-    });
-  }
-}
-
-// ── COMPRAR SUPER BANANA ──────────────────────────────────────────────────────
-function buyStarBanana(gameId, playerId) {
-  const game = games[gameId];
-  if (!game) return;
-  const p = game.players[playerId];
-  if (!p) return;
-  const space = game.board[p.position];
-  if (space.type !== 'star') return;
-  if (p.bananas < SUPER_BANANA_COST) {
-    io.to(playerId).emit('buy_result', { success: false, msg: 'No tienes suficientes bananas (necesitas 50).' });
-    return;
-  }
-  p.bananas -= SUPER_BANANA_COST;
-  p.superBananas++;
-  io.to(gameId).emit('buy_result', {
-    success: true, playerId,
-    bananas: p.bananas, superBananas: p.superBananas
+  io.to(gameId).emit('minigame_incoming', {
+    type: isSuper ? 'super' : 'normal',
+    minigameId: mgId,
+    players: count,
+    redTeam: isSuper ? redTeam  : [],
+    blueTeam: isSuper ? blueTeam : [],
+    countdown: 5,
+    duration: 25
   });
+
+  // El servidor auto-resuelve si el cliente no reporta
+  g.mgTimer = setTimeout(() => {
+    console.log(`>>> [${gameId}] Auto-resolviendo minijuego`);
+    const alive = g.turnOrder.filter(id => !g.players[id]?.disconnected);
+    const sh    = [...alive].sort(() => Math.random() - 0.5);
+    if (isSuper) {
+      resolveMinigame(gameId, { type:'super', winnerTeam: Math.random()<0.5?'red':'blue' });
+    } else {
+      resolveMinigame(gameId, { type:'normal', winner:sh[0], second:sh[1]||null, third:sh[2]||null });
+    }
+  }, MG_TOTAL_MS);
 }
 
-// ── FIN DE PARTIDA ────────────────────────────────────────────────────────────
-async function endGame(gameId) {
-  const game = games[gameId];
-  if (!game || game.over) return;
-  game.over = true;
+// ── RESOLVER MINIJUEGO ────────────────────────────────────────────────────────
+function resolveMinigame(gameId, results) {
+  const g = games[gameId];
+  if (!g || g.phase !== 'minigame') return;
+  g.phase = 'rolling';
+  if (g.mgTimer) { clearTimeout(g.mgTimer); g.mgTimer = null; }
 
-  // Calcular ranking: 1) super bananas 2) bananas normales
-  const ranking = Object.values(game.players)
-    .sort((a, b) => b.superBananas - a.superBananas || b.bananas - a.bananas)
-    .map((p, i) => ({ ...p, position: i + 1 }));
-
-  // Palmeras
-  const palmRewards = [PALMERAS_1ST, PALMERAS_2ND, PALMERAS_3RD];
-  for (let i = 0; i < ranking.length; i++) {
-    const p = ranking[i];
-    const palmeras = palmRewards[i] || 0;
-    if (palmeras > 0) {
-      try {
-        await User.updateOne({ username: p.username }, {
-          $inc: { palmeras, gamesPlayed: 1, wins: i === 0 ? 1 : 0 }
-        });
-      } catch(e) { console.error('DB update error:', e.message); }
-    }
+  if (results.type === 'super') {
+    Object.values(g.players).forEach(p => {
+      if (p.team === results.winnerTeam) p.superBananas++;
+    });
+  } else {
+    if (results.winner && g.players[results.winner]) g.players[results.winner].bananas += 10;
+    if (results.second && g.players[results.second]) g.players[results.second].bananas += 8;
+    if (results.third  && g.players[results.third])  g.players[results.third].bananas  += 6;
   }
+
+  io.to(gameId).emit('minigame_result', { ...results, players: g.players });
+  console.log(`>>> [${gameId}] MJ resuelto. R${g.round}/${g.maxRounds}`);
+
+  if (g.round >= g.maxRounds) {
+    setTimeout(() => endGame(gameId), MG_RESULT_MS);
+  } else {
+    g.round++;
+    g.turnIdx = 0;
+    Object.values(g.players).forEach(p => p.hasRolled = false);
+    setTimeout(() => {
+      io.to(gameId).emit('next_round', {
+        round: g.round, maxRounds: g.maxRounds, players: g.players
+      });
+      emitTurn(gameId);
+    }, MG_RESULT_MS);
+  }
+}
+
+// ── FIN ───────────────────────────────────────────────────────────────────────
+async function endGame(gameId) {
+  const g = games[gameId];
+  if (!g || g.over) return;
+  g.over = true;
+  if (g.mgTimer) clearTimeout(g.mgTimer);
+
+  const ranking = Object.values(g.players)
+    .sort((a,b) => b.superBananas - a.superBananas || b.bananas - a.bananas)
+    .map((p,i) => ({ ...p, finalPosition: i+1 }));
 
   io.to(gameId).emit('game_over', { ranking });
-  console.log(`>>> [PARTIDA ${gameId}] Terminada. Ganador: ${ranking[0]?.username}`);
+
+  for (let i = 0; i < ranking.length; i++) {
+    const pal = [3,2,1][i] || 0;
+    try {
+      await User.updateOne({ username: ranking[i].username }, {
+        $inc: { palmeras: pal, gamesPlayed: 1, wins: i===0?1:0 }
+      });
+    } catch(e) { console.error('DB:', e.message); }
+  }
+
+  console.log(`>>> [${gameId}] FIN. Ganador: ${ranking[0]?.username}`);
   delete games[gameId];
 }
 
 // ── SOCKET.IO ─────────────────────────────────────────────────────────────────
-io.on('connection', socket => {
-  console.log(`>>> Conexión: ${socket.id}`);
+io.on('connection', sock => {
+  console.log(`>>> +${sock.id}`);
 
-  // AUTH
-  socket.on('register', async ({ username, password }) => {
+  sock.on('register', async ({ username, password }) => {
     if (!username?.trim() || !password?.trim())
-      return socket.emit('auth_result', { ok: false, msg: 'Campos obligatorios.' });
+      return sock.emit('auth_result', { ok:false, msg:'Campos obligatorios.' });
     try {
-      const hash = await bcrypt.hash(password, 10);
-      await new User({ username: username.trim(), password: hash }).save();
-      socket.emit('auth_result', { ok: true, msg: 'Cuenta creada. Inicia sesión.' });
+      await new User({ username:username.trim(), password:await bcrypt.hash(password,10) }).save();
+      sock.emit('auth_result', { ok:true, msg:'Cuenta creada. Inicia sesión.' });
     } catch(e) {
-      socket.emit('auth_result', { ok: false, msg: e.code === 11000 ? 'Usuario ya existe.' : 'Error interno.' });
+      sock.emit('auth_result', { ok:false, msg: e.code===11000?'Usuario ya existe.':'Error interno.' });
     }
   });
 
-  socket.on('login', async ({ username, password }) => {
+  sock.on('login', async ({ username, password }) => {
     if (!username?.trim() || !password?.trim())
-      return socket.emit('auth_result', { ok: false, msg: 'Campos obligatorios.' });
+      return sock.emit('auth_result', { ok:false, msg:'Campos obligatorios.' });
     try {
-      const user = await User.findOne({ username: username.trim() });
-      if (!user || !(await bcrypt.compare(password, user.password)))
-        return socket.emit('auth_result', { ok: false, msg: 'Credenciales incorrectas.' });
-      socket.userData = user;
-      socket.emit('auth_result', {
-        ok: true,
-        user: { username: user.username, palmeras: user.palmeras, wins: user.wins,
-                gamesPlayed: user.gamesPlayed, ownedSkins: user.ownedSkins, activeSkin: user.activeSkin }
-      });
-    } catch(e) {
-      socket.emit('auth_result', { ok: false, msg: 'Error interno.' });
-    }
+      const u = await User.findOne({ username: username.trim() });
+      if (!u || !(await bcrypt.compare(password, u.password)))
+        return sock.emit('auth_result', { ok:false, msg:'Credenciales incorrectas.' });
+      sock.userData = u;
+      sock.emit('auth_result', { ok:true, user:{
+        username:u.username, palmeras:u.palmeras, wins:u.wins,
+        gamesPlayed:u.gamesPlayed, ownedSkins:u.ownedSkins, activeSkin:u.activeSkin
+      }});
+    } catch(e) { sock.emit('auth_result', { ok:false, msg:'Error interno.' }); }
   });
 
-  // COLA
-  socket.on('join_queue', () => {
-    if (!socket.userData) return socket.emit('error_msg', 'Debes iniciar sesión primero.');
-    addToQueue(socket.id);
+  sock.on('join_queue',  () => {
+    if (!sock.userData) return sock.emit('error_msg','Inicia sesión primero.');
+    addToQueue(sock.id);
   });
-  socket.on('leave_queue', () => removeFromQueue(socket.id));
+  sock.on('leave_queue', () => removeFromQueue(sock.id));
 
-  // SELECCIÓN DE PERSONAJE
-  socket.on('select_animal', ({ lobbyId, animal }) => {
+  sock.on('select_animal', ({ lobbyId, animal }) => {
     const lobby = lobbies[lobbyId];
-    if (!lobby) return;
-    const taken = Object.values(lobby.players).some(p => p.id !== socket.id && p.animal === animal);
-    if (taken) return socket.emit('animal_taken', { animal });
-    if (lobby.players[socket.id]) {
-      lobby.players[socket.id].animal = animal;
-      lobby.players[socket.id].ready = true;
-    }
+    if (!lobby || !lobby.players[sock.id]) return;
+    const taken = Object.values(lobby.players)
+      .some(p => p.id !== sock.id && p.animal === animal);
+    if (taken) return sock.emit('animal_taken', { animal });
+    lobby.players[sock.id].animal = animal;
+    lobby.players[sock.id].ready  = true;
     io.to(lobbyId).emit('lobby_update', { players: Object.values(lobby.players) });
-
-    // Si todos eligieron, iniciar
+    // Si todos eligieron → arrancar
     if (Object.values(lobby.players).every(p => p.ready)) {
       clearTimeout(lobby.timer);
       startGame(lobbyId);
     }
   });
 
-  // JUEGO
-  socket.on('roll_dice', () => {
-    if (socket.currentGame) rollDice(socket.currentGame, socket.id);
+  sock.on('roll_dice', () => {
+    if (sock.currentGame) handleRoll(sock.currentGame, sock.id);
   });
 
-  socket.on('buy_star', () => {
-    if (socket.currentGame) buyStarBanana(socket.currentGame, socket.id);
+  sock.on('buy_star', () => {
+    const g = games[sock.currentGame];
+    if (!g) return;
+    const p = g.players[sock.id];
+    if (!p || g.board[p.position]?.type !== 'star') return;
+    if (p.bananas < 50) return sock.emit('buy_result',{ success:false, msg:'Necesitas 50 🍌.' });
+    p.bananas -= 50; p.superBananas++;
+    io.to(sock.currentGame).emit('buy_result',{ success:true, playerId:sock.id,
+      bananas:p.bananas, superBananas:p.superBananas });
   });
 
-  socket.on('minigame_ended', async (data) => {
-    const gameId = socket.currentGame;
-    const game = games[gameId];
-    if (!game) return;
+  sock.on('minigame_done', results => {
+    const g = games[sock.currentGame];
+    if (!g || g.phase !== 'minigame') return;
+    if (g.turnOrder[0] === sock.id) resolveMinigame(sock.currentGame, results);
+  });
 
-    // Evita procesar los resultados más de una vez si varios jugadores terminan a la vez
-    if (game.processingResults) return;
-    game.processingResults = true;
-
+  sock.on('get_leaderboard', async () => {
     try {
-      const results = data.results; 
-      
-      // 1. Actualización de palmeras usando $inc (esto asegura que se sumen en la DB)
-      if (results[0]) {
-        await User.updateOne({ _id: results[0].id }, { $inc: { palmeras: 10 } });
-        if (game.players[results[0].id]) game.players[results[0].id].palmeras += 10;
-      }
-      if (results[1]) {
-        await User.updateOne({ _id: results[1].id }, { $inc: { palmeras: 5 } });
-        if (game.players[results[1].id]) game.players[results[1].id].palmeras += 5;
-      }
-
-      game.processingResults = false;
-      game.turnIndex = 0; // Reiniciamos el turno para que el flujo continúe
-
-      // 2. LA LÍNEA CLAVE: Emitir round_ready para desbloquear las pantallas
-      io.to(gameId).emit('round_ready', {
-        players: game.players,
-        activePlayer: Object.keys(game.players)[0]
-      });
-
-    } catch (e) {
-      console.error("Error en minigame_ended:", e);
-      game.processingResults = false;
-    }
+      const top = await User.find({},'username wins gamesPlayed palmeras')
+        .sort({ wins:-1 }).limit(20);
+      sock.emit('leaderboard_data', top);
+    } catch(e){}
   });
 
-  // TIENDA
-  socket.on('buy_skin', async ({ skin }) => {
-    if (!socket.userData) return;
-    const SKIN_COST = 100;
+  sock.on('buy_skin', async ({ skin }) => {
+    if (!sock.userData) return;
     try {
-      const user = await User.findOne({ username: socket.userData.username });
-      if (!user) return;
-      if (user.ownedSkins.includes(skin)) return socket.emit('shop_result', { ok: false, msg: 'Ya tienes esta skin.' });
-      if (user.palmeras < SKIN_COST) return socket.emit('shop_result', { ok: false, msg: 'No tienes suficientes palmeras.' });
-      user.palmeras -= SKIN_COST;
-      user.ownedSkins.push(skin);
-      await user.save();
-      socket.userData = user;
-      socket.emit('shop_result', { ok: true, palmeras: user.palmeras, ownedSkins: user.ownedSkins });
-    } catch(e) {
-      socket.emit('shop_result', { ok: false, msg: 'Error.' });
-    }
+      const u = await User.findOne({ username: sock.userData.username });
+      if (!u) return;
+      if (u.ownedSkins.includes(skin))
+        return sock.emit('shop_result',{ ok:false, msg:'Ya la tienes.' });
+      if (u.palmeras < 100)
+        return sock.emit('shop_result',{ ok:false, msg:'Palmeras insuficientes.' });
+      u.palmeras -= 100; u.ownedSkins.push(skin);
+      await u.save(); sock.userData = u;
+      sock.emit('shop_result',{ ok:true, palmeras:u.palmeras, ownedSkins:u.ownedSkins });
+    } catch(e) { sock.emit('shop_result',{ ok:false, msg:'Error.' }); }
   });
 
-  socket.on('equip_skin', async ({ skin }) => {
-    if (!socket.userData) return;
+  sock.on('equip_skin', async ({ skin }) => {
+    if (!sock.userData) return;
     try {
-      const user = await User.findOne({ username: socket.userData.username });
-      if (!user || !user.ownedSkins.includes(skin)) return;
-      user.activeSkin = skin;
-      await user.save();
-      socket.userData = user;
-      socket.emit('skin_equipped', { activeSkin: skin });
-    } catch(e) {}
+      const u = await User.findOne({ username: sock.userData.username });
+      if (!u || !u.ownedSkins.includes(skin)) return;
+      u.activeSkin = skin; await u.save(); sock.userData = u;
+      sock.emit('skin_equipped',{ activeSkin:skin });
+    } catch(e){}
   });
 
-  // LEADERBOARD
-  socket.on('get_leaderboard', async () => {
-    try {
-      const top = await User.find({}, 'username wins gamesPlayed palmeras')
-        .sort({ wins: -1, palmeras: -1 }).limit(20);
-      socket.emit('leaderboard_data', top);
-    } catch(e) {}
-  });
+  sock.on('disconnect', () => {
+    console.log(`>>> -${sock.id}`);
+    removeFromQueue(sock.id);
 
-  socket.on('disconnect', () => {
-    console.log(`>>> Desconectado: ${socket.id}`);
-    removeFromQueue(socket.id);
-    if (socket.currentGame) {
-      const game = games[socket.currentGame];
-      if (game && game.players[socket.id]) {
-        game.players[socket.id].disconnected = true;
-        io.to(socket.currentGame).emit('player_disconnected', { playerId: socket.id });
-        // Si quedan < 2 jugadores activos, terminar
-        const active = Object.values(game.players).filter(p => !p.disconnected).length;
-        if (active < 1) endGame(socket.currentGame);
+    if (sock.currentLobby) {
+      const lobby = lobbies[sock.currentLobby];
+      if (lobby) {
+        delete lobby.players[sock.id];
+        const remaining = Object.keys(lobby.players).length;
+        if (remaining === 0) { clearTimeout(lobby.timer); delete lobbies[sock.currentLobby]; }
+        else io.to(sock.currentLobby).emit('lobby_update',{ players:Object.values(lobby.players) });
       }
     }
-    // Limpiar lobby
-    for (const [lobbyId, lobby] of Object.entries(lobbies)) {
-      if (lobby.players[socket.id]) {
-        delete lobby.players[socket.id];
-        if (Object.keys(lobby.players).length === 0) {
-          clearTimeout(lobby.timer);
-          delete lobbies[lobbyId];
-        } else {
-          io.to(lobbyId).emit('lobby_update', { players: Object.values(lobby.players) });
-        }
+
+    if (sock.currentGame) {
+      const g = games[sock.currentGame];
+      if (g && g.players[sock.id]) {
+        g.players[sock.id].disconnected = true;
+        io.to(sock.currentGame).emit('player_disconnected',{ playerId:sock.id, username:g.players[sock.id].username });
+        if (g.phase === 'rolling' && g.turnOrder[g.turnIdx] === sock.id)
+          setTimeout(() => advanceTurn(sock.currentGame), 1000);
+        const alive = Object.values(g.players).filter(p=>!p.disconnected).length;
+        if (alive < 1) endGame(sock.currentGame);
       }
     }
   });
 });
 
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, '0.0.0.0', () => console.log(`>>> BANANA PARTY en puerto ${PORT}`));
+server.listen(PORT, '0.0.0.0', () => console.log(`>>> BANANA PARTY :${PORT}`));
