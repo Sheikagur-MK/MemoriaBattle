@@ -184,8 +184,38 @@ const G = (() => {
   }
 
   function updateHUD(data) {
-    document.getElementById('hud-round').textContent = `Ronda ${data.round || 1}/${data.maxRounds || 10}`;
+    if (!data) return;
+
+    // Actualizar Ronda
+    const roundEl = document.getElementById('hud-round');
+    if (roundEl) {
+        roundEl.textContent = `Ronda ${data.round || 1}/${data.maxRounds || 10}`;
+    }
+
+    // Actualizar Barra de Progreso (si existe)
     const bar = document.getElementById('hud-bar');
+    if (bar && data.progress !== undefined) {
+        bar.style.width = `${data.progress}%`;
+    }
+
+    // ACTUALIZACIÓN DE PUNTOS (PALMERAS)
+    // Buscamos al jugador local en los datos que vienen del servidor
+    if (data.players && socket && data.players[socket.id]) {
+        const misPuntos = data.players[socket.id].palmeras;
+        
+        // Actualizamos la variable local del usuario
+        if (typeof user !== 'undefined' && user) {
+            user.palmeras = misPuntos;
+        }
+
+        // Actualizamos el texto en el HTML (el contador de arriba)
+        const palmerasEl = document.getElementById('u-palmeras');
+        if (palmerasEl) {
+            palmerasEl.textContent = misPuntos;
+            console.log(">>> HUD: Puntos actualizados a " + misPuntos);
+        }
+    }
+}
 
     // Construir chips de jugadores
     let html = `<div class="hud-round">Ronda ${data.round || 1}/${data.maxRounds || 10}</div>`;
