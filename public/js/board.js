@@ -5,13 +5,25 @@ class BoardRenderer {
     this.ctx    = this.canvas.getContext('2d');
     this.board  = [];
     this.players= {};
-    this.camX   = 0; this.camY = 0;
+    this.selfId = null;
+
+    // Cámara — centrada en el jugador activo
+    this.camX = 0; this.camY = 0;
     this.targetCamX = 0; this.targetCamY = 0;
-    this.zoom   = 1;
-    this.dragging = false;
-    this.dragStart= {x:0,y:0};
-    this.animPlayers = {}; // posiciones animadas
-    this.particles   = [];
+    this.zoom = 1.4;  // zoom inicial — el tablero se ve "cerca"
+
+    // Posiciones animadas suaves
+    this.animPos = {};   // { [playerId]: { x, y, bobOffset } }
+    this.particles = [];
+    this.currentTurnId = null;
+    this.frameCount = 0;
+
+    // Drag manual (opcional)
+    this.dragging   = false;
+    this.dragStart  = { x: 0, y: 0 };
+    this.manualDrag = false;
+    this.dragTimeout= null;
+
     this.resize();
     this._initInput();
     window.addEventListener('resize', () => this.resize());
@@ -25,283 +37,507 @@ class BoardRenderer {
     this.H = window.innerHeight;
   }
 
-  // ── CONFIGURACIÓN ─────────────────────────────────────────
-  // El tablero se dibuja en espiral: 70 casillas en forma de snake
-  CELL_W = 110;
-  CELL_H = 90;
+  // ── LAYOUT ────────────────────────────────────────────────
+  CELL_W = 100;
+  CELL_H = 85;
   COLS    = 10;
 
   getCellPos(idx) {
     const row = Math.floor(idx / this.COLS);
-    const col = row % 2 === 0 ? idx % this.COLS : this.COLS - 1 - (idx % this.COLS);
+    // Serpentina: filas pares van de izquierda a derecha, impares al revés
+    const col = row % 2 === 0
+      ? idx % this.COLS
+      : this.COLS - 1 - (idx % this.COLS);
     return {
       x: col * this.CELL_W + this.CELL_W / 2,
-      y: row * this.CELL_H + this.CELL_H / 2
+      y: row * this.CELL_H + this.CELL_H / 2,
     };
   }
 
   get totalW() { return this.COLS * this.CELL_W; }
   get totalH() { return Math.ceil(70 / this.COLS) * this.CELL_H; }
 
-  // ── COLORES POR TIPO DE CASILLA ───────────────────────────
-  SPACE_COLORS = {
-    blue:     { fill:'#1A5276', stroke:'#4A90E2', emoji:'🔵', label:'+5🍌' },
-    red:      { fill:'#922B21', stroke:'#E74C3C', emoji:'🔴', label:'-2🍌' },
-    star:     { fill:'#7D6608', stroke:'#FFD700', emoji:'⭐', label:'Super 🍌' },
-    supermini:{ fill:'#6C3483', stroke:'#9B59B6', emoji:'💜', label:'¡Super MJ!' },
-    normal:   { fill:'#2C3E50', stroke:'#566573', emoji:'',   label:'' },
+  // ── COLORES ───────────────────────────────────────────────
+  SPACE_CFG = {
+    blue:      { fill: '#1A3F6F', stroke: '#4A90E2', emoji: '🔵', label: '+5🍌' },
+    red:       { fill: '#6F1A1A', stroke: '#E74C3C', emoji: '🔴', label: '-2🍌' },
+    star:      { fill: '#5C4A00', stroke: '#FFD700', emoji: '⭐', label: '¡Banana!' },
+    supermini: { fill: '#3D1A5C', stroke: '#9B59B6', emoji: '💜', label: '¡Super!' },
+    normal:    { fill: '#2A3340', stroke: '#445566', emoji: '',    label: '' },
   };
 
-  // ── COLORES POR BIOMA ──────────────────────────────────────
-  BIOME_BG = {
-    fauna:    '#0d2818',
-    desierto: '#2d1800',
-    bosque:   '#0a1f0a',
-    selva:    '#0a2010',
-    artico:   '#0a1a28',
-  };
+  BIOME_BG = { fauna:'#0d2818', desierto:'#2d1800', bosque:'#0a1f0a', selva:'#0a2010', artico:'#0a1a28' };
+  BIOME_EMOJI = { fauna:'🌿', desierto:'🏜️', bosque:'🌲', selva:'🌴', artico:'❄️' };
 
-  BIOME_EMOJI = {
-    fauna:'🌿', desierto:'🏜️', bosque:'🌲', selva:'🌴', artico:'❄️'
-  };
-
-  // ── INIT POSICIONES ANIMADAS ──────────────────────────────
-  initPlayers(players) {
+  // ── INICIALIZAR JUGADORES ─────────────────────────────────
+  initPlayers(players, selfId) {
+    this.selfId  = selfId;
     this.players = players;
     Object.values(players).forEach(p => {
-      if (!this.animPlayers[p.id]) {
+      if (!this.animPos[p.id]) {
         const pos = this.getCellPos(p.position || 0);
-        this.animPlayers[p.id] = { x: pos.x, y: pos.y };
+        this.animPos[p.id] = { x: pos.x, y: pos.y, bobOffset: Math.random() * Math.PI * 2 };
       }
     });
+    // Centrar cámara en el jugador local al inicio
+    this.focusPlayer(selfId, true);
   }
 
-  updatePlayer(playerId, newPos) {
-    if (this.players[playerId]) {
-      this.players[playerId].position = newPos;
-      this._animateMove(playerId, newPos);
+  updatePlayers(players) {
+    this.players = players;
+  }
+
+  // Mover jugador con animación suave paso a paso
+  animateMove(playerId, fromPos, toPos, onDone) {
+    const steps = [];
+    // Animar casilla por casilla
+    let cur = fromPos;
+    while (cur !== toPos) {
+      cur = (cur + 1) % 70;
+      steps.push(cur);
+    }
+    if (steps.length === 0) { onDone && onDone(); return; }
+
+    let i = 0;
+    const next = () => {
+      if (i >= steps.length) { onDone && onDone(); return; }
+      const target = this.getCellPos(steps[i]);
+      const anim   = this.animPos[playerId];
+      if (anim) { anim.targetX = target.x; anim.targetY = target.y; }
+      i++;
+      setTimeout(next, 220);
+    };
+    next();
+  }
+
+  // Actualizar jugador y animar
+  movePlayer(playerId, prevPos, newPos) {
+    if (this.players[playerId]) this.players[playerId].position = newPos;
+    this.animateMove(playerId, prevPos, newPos, () => {
+      this._spawnParticles(this.animPos[playerId]?.x || 0, this.animPos[playerId]?.y || 0,
+        this.players[playerId]?.color || '#FFD700');
+    });
+    // Si es el jugador local, seguirlo con la cámara
+    if (playerId === this.selfId) {
+      setTimeout(() => this.focusPlayer(playerId), 300);
     }
   }
 
-  _animateMove(playerId, targetPos) {
-    const target = this.getCellPos(targetPos);
-    const anim   = this.animPlayers[playerId];
+  // ── CÁMARA ────────────────────────────────────────────────
+  focusPlayer(playerId, instant = false) {
+    const anim = this.animPos[playerId];
     if (!anim) return;
-
-    // Interpolación suave
-    const step = () => {
-      const dx = target.x - anim.x;
-      const dy = target.y - anim.y;
-      if (Math.abs(dx) < 1 && Math.abs(dy) < 1) {
-        anim.x = target.x;
-        anim.y = target.y;
-        this._spawnParticles(target.x, target.y, this.players[playerId]?.color || '#FFD700');
-        return;
-      }
-      anim.x += dx * 0.12;
-      anim.y += dy * 0.12;
-      requestAnimationFrame(step);
-    };
-    step();
+    const tx = this.W / 2 - anim.x * this.zoom;
+    const ty = this.H / 2 - anim.y * this.zoom - 40; // compensar HUD arriba
+    if (instant) { this.camX = tx; this.camY = ty; }
+    this.targetCamX = tx;
+    this.targetCamY = ty;
+    this.manualDrag = false;
   }
 
+  // Enfocar el jugador cuyo turno es (para que todos vean)
+  focusTurn(playerId) {
+    this.currentTurnId = playerId;
+    this.focusPlayer(playerId);
+  }
+
+  // ── PARTÍCULAS ─────────────────────────────────────────────
   _spawnParticles(x, y, color) {
-    for (let i = 0; i < 12; i++) {
-      const angle = (Math.PI * 2 / 12) * i;
+    for (let i = 0; i < 14; i++) {
+      const a = (Math.PI * 2 / 14) * i;
       this.particles.push({
         x, y,
-        vx: Math.cos(angle) * (2 + Math.random() * 3),
-        vy: Math.sin(angle) * (2 + Math.random() * 3),
-        life: 1, color,
-        r: 4 + Math.random() * 4
+        vx: Math.cos(a) * (2 + Math.random() * 4),
+        vy: Math.sin(a) * (2 + Math.random() * 4) - 2,
+        life: 1, color, r: 4 + Math.random() * 4
       });
     }
   }
 
-  // ── CÁMARA: CENTRAR EN JUGADOR ────────────────────────────
-  focusPlayer(playerId) {
-    const anim = this.animPlayers[playerId];
-    if (!anim) return;
-    this.targetCamX = this.W / 2 - anim.x;
-    this.targetCamY = this.H / 2 - anim.y;
-  }
-
-  // ── INPUT DRAG ────────────────────────────────────────────
+  // ── INPUT (drag opcional) ──────────────────────────────────
   _initInput() {
-    this.canvas.addEventListener('mousedown',  e => { this.dragging = true; this.dragStart = {x:e.clientX - this.camX, y:e.clientY - this.camY}; });
-    this.canvas.addEventListener('mouseup',    () => this.dragging = false);
-    this.canvas.addEventListener('mousemove',  e => { if (this.dragging) { this.camX = e.clientX - this.dragStart.x; this.camY = e.clientY - this.dragStart.y; }});
-    this.canvas.addEventListener('wheel',      e => { this.zoom = Math.max(0.5, Math.min(2, this.zoom - e.deltaY * 0.001)); });
-    this.canvas.addEventListener('touchstart', e => { const t = e.touches[0]; this.dragging = true; this.dragStart = {x:t.clientX - this.camX, y:t.clientY - this.camY}; }, {passive:true});
-    this.canvas.addEventListener('touchend',   () => this.dragging = false);
-    this.canvas.addEventListener('touchmove',  e => { if (this.dragging) { const t = e.touches[0]; this.camX = t.clientX - this.dragStart.x; this.camY = t.clientY - this.dragStart.y; }}, {passive:true});
+    const c = this.canvas;
+    c.addEventListener('mousedown', e => {
+      this.dragging  = true;
+      this.dragStart = { x: e.clientX - this.camX, y: e.clientY - this.camY };
+    });
+    c.addEventListener('mouseup',   () => { this.dragging = false; });
+    c.addEventListener('mousemove', e => {
+      if (!this.dragging) return;
+      this.camX = e.clientX - this.dragStart.x;
+      this.camY = e.clientY - this.dragStart.y;
+      this.manualDrag = true;
+      // Volver a seguir al jugador tras 4 segundos sin tocar
+      clearTimeout(this.dragTimeout);
+      this.dragTimeout = setTimeout(() => { this.manualDrag = false; }, 4000);
+    });
+    c.addEventListener('wheel', e => {
+      this.zoom = Math.max(0.6, Math.min(2.2, this.zoom - e.deltaY * 0.001));
+    });
+    // Touch
+    c.addEventListener('touchstart', e => {
+      const t = e.touches[0];
+      this.dragging  = true;
+      this.dragStart = { x: t.clientX - this.camX, y: t.clientY - this.camY };
+    }, { passive: true });
+    c.addEventListener('touchend',   () => { this.dragging = false; });
+    c.addEventListener('touchmove',  e => {
+      if (!this.dragging) return;
+      const t = e.touches[0];
+      this.camX = t.clientX - this.dragStart.x;
+      this.camY = t.clientY - this.dragStart.y;
+      this.manualDrag = true;
+      clearTimeout(this.dragTimeout);
+      this.dragTimeout = setTimeout(() => { this.manualDrag = false; }, 4000);
+    }, { passive: true });
   }
 
-  // ── LOOP DE RENDER ─────────────────────────────────────────
-  startRender() {
-    this._renderLoop();
-  }
+  // ── LOOP ──────────────────────────────────────────────────
+  startRender() { this._loop(); }
 
-  _renderLoop() {
-    // Suavizar cámara
-    if (!this.dragging) {
-      this.camX += (this.targetCamX - this.camX) * 0.08;
-      this.camY += (this.targetCamY - this.camY) * 0.08;
+  _loop() {
+    this.frameCount++;
+
+    // Interpolar posiciones animadas
+    Object.values(this.animPos).forEach(a => {
+      if (a.targetX !== undefined) {
+        a.x += (a.targetX - a.x) * 0.18;
+        a.y += (a.targetY - a.y) * 0.18;
+        if (Math.abs(a.targetX - a.x) < 0.5) { a.x = a.targetX; a.y = a.targetY; }
+      }
+    });
+
+    // Seguir al jugador local si no está en modo drag manual
+    if (!this.manualDrag && !this.dragging) {
+      this.camX += (this.targetCamX - this.camX) * 0.07;
+      this.camY += (this.targetCamY - this.camY) * 0.07;
+      // Actualizar target continuamente por si el jugador se movió
+      if (this.selfId && this.animPos[this.selfId]) {
+        const ax = this.animPos[this.selfId].x;
+        const ay = this.animPos[this.selfId].y;
+        this.targetCamX = this.W / 2 - ax * this.zoom;
+        this.targetCamY = this.H / 2 - ay * this.zoom - 40;
+      }
     }
 
     this._draw();
-    requestAnimationFrame(() => this._renderLoop());
+    requestAnimationFrame(() => this._loop());
   }
 
+  // ── DIBUJO PRINCIPAL ──────────────────────────────────────
   _draw() {
     const ctx = this.ctx;
     ctx.clearRect(0, 0, this.W, this.H);
 
-    // Fondo global
-    ctx.fillStyle = '#0a0a1a';
+    // Fondo oscuro con gradiente sutil
+    ctx.fillStyle = '#080c14';
     ctx.fillRect(0, 0, this.W, this.H);
+
+    // Mini indicador de bioma actual (esquina)
+    this._drawBiomeHint();
 
     ctx.save();
     ctx.translate(this.camX, this.camY);
     ctx.scale(this.zoom, this.zoom);
 
-    // ── BIOMAS (fondo por sección) ─────────────────────────
+    // Biomas de fondo
+    this._drawBiomes();
+
+    // Conexiones entre casillas
+    this._drawConnections();
+
+    // Casillas
+    this.board.forEach((space, i) => this._drawSpace(space, i));
+
+    // Partículas
+    this._drawParticles();
+
+    // Piezas de jugadores
+    this._drawPieces();
+
+    ctx.restore();
+
+    // Indicador "Es tu turno" / "Turno de X"
+    this._drawTurnIndicator();
+
+    // Minimapa
+    this._drawMinimap();
+  }
+
+  _drawBiomes() {
     const biomes = ['fauna','desierto','bosque','selva','artico'];
     biomes.forEach((biome, bi) => {
-      const startRow = bi * 2; // 2 filas por bioma (10 cols × 2 = 20 casillas / bioma para 100, o 14/bioma para 70)
-      const y0 = Math.floor((bi * 14) / this.COLS) * this.CELL_H;
-      const rows = Math.ceil(14 / this.COLS);
-      ctx.fillStyle = this.BIOME_BG[biome] + 'cc';
-      ctx.fillRect(-10, y0 - 10, this.totalW + 20, rows * this.CELL_H + 20);
+      const rowStart = Math.floor(bi * 14 / this.COLS);
+      const rowEnd   = Math.ceil((bi * 14 + 14) / this.COLS);
+      const y0 = rowStart * this.CELL_H - 8;
+      const h  = (rowEnd - rowStart) * this.CELL_H + 16;
+      ctx.fillStyle = this.BIOME_BG[biome] + 'bb';
+      ctx.fillRect(-12, y0, this.totalW + 24, h);
 
-      // Label de bioma
-      ctx.font = 'bold 13px sans-serif';
-      ctx.fillStyle = 'rgba(255,255,255,0.25)';
-      ctx.textAlign = 'left';
-      ctx.fillText(`${this.BIOME_EMOJI[biome]} ${biome.toUpperCase()}`, 6, y0 + 16);
+      ctx.font      = 'bold 11px sans-serif';
+      ctx.fillStyle = 'rgba(255,255,255,0.2)';
+      ctx.textAlign = 'right';
+      ctx.fillText(`${this.BIOME_EMOJI[biome]} ${biome.toUpperCase()}`, this.totalW - 4, y0 + 14);
     });
+  }
 
-    // ── CONEXIONES ENTRE CASILLAS ──────────────────────────
-    ctx.strokeStyle = 'rgba(255,255,255,0.12)';
-    ctx.lineWidth   = 3;
-    ctx.setLineDash([6, 4]);
+  _drawConnections() {
+    const ctx = this.ctx;
+    ctx.strokeStyle = 'rgba(255,255,255,0.1)';
+    ctx.lineWidth   = 2.5;
+    ctx.setLineDash([5, 5]);
     for (let i = 0; i < this.board.length - 1; i++) {
       const a = this.getCellPos(i);
       const b = this.getCellPos(i + 1);
       ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
     }
     ctx.setLineDash([]);
+  }
 
-    // ── CASILLAS ──────────────────────────────────────────
-    this.board.forEach((space, i) => {
-      this._drawSpace(space, i);
+  _drawSpace(space, i) {
+    const ctx = this.ctx;
+    const pos = this.getCellPos(i);
+    const cfg = this.SPACE_CFG[space.type] || this.SPACE_CFG.normal;
+    const W   = this.CELL_W - 10;
+    const H   = this.CELL_H - 10;
+
+    ctx.save();
+    ctx.translate(pos.x, pos.y);
+
+    // Brillo especial en casillas importantes
+    if (space.type !== 'normal') {
+      ctx.shadowColor = cfg.stroke;
+      ctx.shadowBlur  = 10 + Math.sin(this.frameCount * 0.05) * 4;
+    }
+
+    // Fondo
+    ctx.fillStyle   = cfg.fill;
+    ctx.strokeStyle = cfg.stroke;
+    ctx.lineWidth   = space.type !== 'normal' ? 2.5 : 1.5;
+    this._roundRect(ctx, -W/2, -H/2, W, H, 10);
+    ctx.fill(); ctx.stroke();
+    ctx.shadowBlur = 0;
+
+    // Número
+    ctx.font      = 'bold 9px sans-serif';
+    ctx.fillStyle = 'rgba(255,255,255,0.3)';
+    ctx.textAlign = 'left';
+    ctx.fillText(String(i), -W/2 + 4, -H/2 + 11);
+
+    // Emoji central
+    if (cfg.emoji) {
+      ctx.font = '18px serif'; ctx.textAlign = 'center';
+      ctx.fillText(cfg.emoji, 0, 5);
+    }
+
+    // Label inferior
+    if (cfg.label) {
+      ctx.font      = 'bold 8px sans-serif';
+      ctx.fillStyle = '#fff';
+      ctx.textAlign = 'center';
+      ctx.fillText(cfg.label, 0, H/2 - 5);
+    }
+
+    ctx.restore();
+  }
+
+  _drawPieces() {
+    const ctx = this.ctx;
+    const now = Date.now();
+
+    Object.values(this.players).forEach((p, i) => {
+      if (p.disconnected) return;
+      const anim = this.animPos[p.id];
+      if (!anim) return;
+
+      const isSelf  = p.id === this.selfId;
+      const isTurn  = p.id === this.currentTurnId;
+      const bobY    = Math.sin(now * 0.003 + (anim.bobOffset || 0)) * (isTurn ? 5 : 2);
+
+      // Offset para que no se solapen cuando están en la misma casilla
+      const sameCell = Object.values(this.players).filter(q => !q.disconnected && q.position === p.position);
+      const myIdx    = sameCell.findIndex(q => q.id === p.id);
+      const offsetX  = (myIdx - (sameCell.length - 1) / 2) * 18;
+
+      const drawX = anim.x + offsetX;
+      const drawY = anim.y + bobY - 10;
+
+      ctx.save();
+      ctx.translate(drawX, drawY);
+
+      // Halo si es el turno activo
+      if (isTurn) {
+        const pulse = 0.6 + Math.sin(now * 0.005) * 0.4;
+        ctx.fillStyle = `rgba(255,215,0,${pulse * 0.25})`;
+        ctx.beginPath();
+        ctx.arc(0, 0, 28, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = `rgba(255,215,0,${pulse})`;
+        ctx.lineWidth   = 2;
+        ctx.stroke();
+      }
+
+      // Borde del jugador propio
+      if (isSelf) {
+        ctx.strokeStyle = '#fff';
+        ctx.lineWidth   = 2;
+        ctx.beginPath();
+        ctx.arc(0, 0, 22, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+
+      // Sombra en el suelo
+      ctx.fillStyle = 'rgba(0,0,0,0.3)';
+      ctx.beginPath();
+      ctx.ellipse(0, 16, 14, 5, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Emoji del animal
+      const animal = typeof ANIMALS_DATA !== 'undefined' ? ANIMALS_DATA[p.animal] : null;
+      ctx.font = '28px serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(animal?.emoji || '🐾', 0, 10);
+
+      // Nombre con fondo
+      ctx.font         = 'bold 8px sans-serif';
+      ctx.textAlign    = 'center';
+      const nameW      = ctx.measureText(p.username).width + 8;
+      ctx.fillStyle    = 'rgba(0,0,0,0.7)';
+      ctx.fillRect(-nameW/2, 18, nameW, 12);
+      ctx.fillStyle    = isSelf ? '#FFD700' : p.color || '#fff';
+      ctx.fillText(p.username.slice(0, 9), 0, 27);
+
+      // Bananas debajo
+      ctx.font      = '8px sans-serif';
+      ctx.fillStyle = '#FFD700';
+      ctx.fillText(`🍌${p.bananas}${p.superBananas > 0 ? ` ⭐${p.superBananas}` : ''}`, 0, 38);
+
+      ctx.restore();
     });
+  }
 
-    // ── PARTÍCULAS ────────────────────────────────────────
-    this.particles = this.particles.filter(p => p.life > 0);
+  _drawParticles() {
+    const ctx = this.ctx;
+    this.particles = this.particles.filter(p => p.life > 0.02);
     this.particles.forEach(p => {
       ctx.globalAlpha = p.life;
       ctx.fillStyle   = p.color;
       ctx.beginPath();
       ctx.arc(p.x, p.y, p.r * p.life, 0, Math.PI * 2);
       ctx.fill();
-      p.x += p.vx; p.y += p.vy;
-      p.vy += 0.1; // gravity
-      p.life -= 0.04;
+      p.x += p.vx; p.y += p.vy; p.vy += 0.15; p.life -= 0.035;
     });
     ctx.globalAlpha = 1;
+  }
 
-    // ── PIEZAS DE JUGADORES ──────────────────────────────
-    Object.values(this.players).forEach((p, i) => {
-      if (p.disconnected) return;
-      const anim   = this.animPlayers[p.id];
-      if (!anim) return;
-      const animal = ANIMALS_DATA[p.animal];
-      const offset = { x: (i % 4 - 1.5) * 14, y: Math.floor(i / 4) * 14 - 8 };
+  // ── MINIMAP ────────────────────────────────────────────────
+  _drawMinimap() {
+    const ctx  = this.ctx;
+    const SIZE = 140;
+    const PAD  = 14;
+    const mx   = this.W - SIZE - PAD;
+    const my   = this.H - SIZE - PAD - 30; // encima de los controles
 
-      // Sombra
-      ctx.fillStyle = 'rgba(0,0,0,0.4)';
-      ctx.beginPath();
-      ctx.ellipse(anim.x + offset.x, anim.y + offset.y + 22, 14, 6, 0, 0, Math.PI * 2);
-      ctx.fill();
+    const sx = SIZE / this.totalW;
+    const sy = SIZE / this.totalH;
 
-      // Emoji animal
-      ctx.font = '30px serif';
-      ctx.textAlign = 'center';
-      ctx.fillText(animal?.emoji || '🐾', anim.x + offset.x, anim.y + offset.y + 8);
+    // Fondo
+    ctx.fillStyle = 'rgba(0,0,0,0.75)';
+    this._roundRectScreen(ctx, mx - 4, my - 4, SIZE + 8, SIZE + 8, 8);
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(255,255,255,0.15)';
+    ctx.lineWidth   = 1;
+    ctx.stroke();
 
-      // Nombre
-      ctx.font = 'bold 9px sans-serif';
-      ctx.fillStyle = p.color || '#fff';
-      ctx.fillText(p.username.slice(0,8), anim.x + offset.x, anim.y + offset.y + 22);
-
-      // Bananas
-      ctx.font = '9px sans-serif';
-      ctx.fillStyle = '#FFD700';
-      ctx.fillText(`🍌${p.bananas}`, anim.x + offset.x, anim.y + offset.y + 32);
+    // Casillas coloreadas en el minimap
+    this.board.forEach((space, i) => {
+      const pos = this.getCellPos(i);
+      const cfg = this.SPACE_CFG[space.type] || this.SPACE_CFG.normal;
+      ctx.fillStyle = cfg.stroke + '88';
+      ctx.fillRect(mx + pos.x * sx - 3, my + pos.y * sy - 3, 6, 6);
     });
 
-    ctx.restore();
-  }
-
-  _drawSpace(space, i) {
-    const ctx  = this.ctx;
-    const pos  = this.getCellPos(i);
-    const cfg  = this.SPACE_COLORS[space.type] || this.SPACE_COLORS.normal;
-    const W    = this.CELL_W - 12;
-    const H    = this.CELL_H - 12;
-
-    ctx.save();
-    ctx.translate(pos.x, pos.y);
-
-    // Sombra
-    ctx.shadowColor  = cfg.stroke;
-    ctx.shadowBlur   = space.type !== 'normal' ? 12 : 4;
-
-    // Fondo casilla
-    ctx.fillStyle   = cfg.fill;
-    ctx.strokeStyle = cfg.stroke;
-    ctx.lineWidth   = space.type !== 'normal' ? 2.5 : 1.5;
-    this._roundRect(ctx, -W/2, -H/2, W, H, 10);
-    ctx.fill();
-    ctx.stroke();
-    ctx.shadowBlur = 0;
-
-    // Número de casilla
-    ctx.font      = 'bold 10px sans-serif';
-    ctx.fillStyle = 'rgba(255,255,255,0.35)';
-    ctx.textAlign = 'left';
-    ctx.fillText(`${i}`, -W/2 + 5, -H/2 + 13);
-
-    // Emoji central
-    if (cfg.emoji) {
-      ctx.font      = '22px serif';
-      ctx.textAlign = 'center';
-      ctx.fillText(cfg.emoji, 0, 6);
-    }
+    // Jugadores en el minimap
+    Object.values(this.players).forEach(p => {
+      if (p.disconnected) return;
+      const anim = this.animPos[p.id];
+      if (!anim) return;
+      ctx.fillStyle   = p.id === this.selfId ? '#FFD700' : (p.color || '#fff');
+      ctx.strokeStyle = '#000';
+      ctx.lineWidth   = 1;
+      ctx.beginPath();
+      ctx.arc(mx + anim.x * sx, my + anim.y * sy, p.id === this.selfId ? 4 : 3, 0, Math.PI * 2);
+      ctx.fill(); ctx.stroke();
+    });
 
     // Label
-    if (cfg.label) {
-      ctx.font      = 'bold 9px sans-serif';
-      ctx.fillStyle = '#fff';
-      ctx.textAlign = 'center';
-      ctx.fillText(cfg.label, 0, H/2 - 6);
-    }
+    ctx.font      = 'bold 9px sans-serif';
+    ctx.fillStyle = 'rgba(255,255,255,0.4)';
+    ctx.textAlign = 'center';
+    ctx.fillText('MINIMAPA', mx + SIZE / 2, my + SIZE + 12);
+  }
 
+  // ── INDICADOR DE TURNO ────────────────────────────────────
+  _drawTurnIndicator() {
+    const ctx = this.ctx;
+    if (!this.currentTurnId || !this.players[this.currentTurnId]) return;
+    const p   = this.players[this.currentTurnId];
+    const isMy= p.id === this.selfId;
+
+    const txt   = isMy ? '🎲 ¡Es tu turno!' : `👁 Turno de ${p.username}`;
+    const color = isMy ? '#FFD700' : (p.color || '#aaa');
+
+    ctx.save();
+    ctx.font         = 'bold 15px sans-serif';
+    ctx.textAlign    = 'center';
+    const w          = ctx.measureText(txt).width + 24;
+    const x          = this.W / 2 - w / 2;
+    const y          = this.H - 55;
+    ctx.fillStyle    = 'rgba(0,0,0,0.75)';
+    this._roundRectScreen(ctx, x, y, w, 32, 16);
+    ctx.fill();
+    ctx.strokeStyle  = color;
+    ctx.lineWidth    = 2;
+    ctx.stroke();
+    ctx.fillStyle    = color;
+    ctx.fillText(txt, this.W / 2, y + 21);
     ctx.restore();
   }
 
+  _drawBiomeHint() {
+    // Bioma donde está el jugador local
+    if (!this.selfId || !this.players[this.selfId]) return;
+    const pos   = this.players[this.selfId].position || 0;
+    const biome = this.board[pos]?.biome || '';
+    const emoji = this.BIOME_EMOJI[biome] || '';
+    if (!biome) return;
+    const ctx   = this.ctx;
+    ctx.font      = 'bold 11px sans-serif';
+    ctx.fillStyle = 'rgba(255,255,255,0.35)';
+    ctx.textAlign = 'left';
+    ctx.fillText(`${emoji} ${biome.toUpperCase()}`, 14, this.H - 16);
+  }
+
+  // ── HELPERS ───────────────────────────────────────────────
   _roundRect(ctx, x, y, w, h, r) {
     ctx.beginPath();
-    ctx.moveTo(x + r, y);
-    ctx.lineTo(x + w - r, y);
-    ctx.quadraticCurveTo(x + w, y, x + w, y + r);
-    ctx.lineTo(x + w, y + h - r);
-    ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
-    ctx.lineTo(x + r, y + h);
-    ctx.quadraticCurveTo(x, y + h, x, y + h - r);
-    ctx.lineTo(x, y + r);
-    ctx.quadraticCurveTo(x, y, x + r, y);
+    ctx.moveTo(x+r,y); ctx.lineTo(x+w-r,y);
+    ctx.quadraticCurveTo(x+w,y,x+w,y+r);
+    ctx.lineTo(x+w,y+h-r);
+    ctx.quadraticCurveTo(x+w,y+h,x+w-r,y+h);
+    ctx.lineTo(x+r,y+h);
+    ctx.quadraticCurveTo(x,y+h,x,y+h-r);
+    ctx.lineTo(x,y+r);
+    ctx.quadraticCurveTo(x,y,x+r,y);
     ctx.closePath();
   }
+
+  _roundRectScreen(ctx, x, y, w, h, r) {
+    this._roundRect(ctx, x, y, w, h, r);
+  }
 }
+
+// Alias para que _drawBiomes acceda a ctx correctamente
+const ctx = { fillStyle:'', strokeStyle:'', lineWidth:1,
+  fillRect(){}, fillText(){}, textAlign:'left',
+  font:'', beginPath(){}, moveTo(){}, lineTo(){}, stroke(){}, fill(){} };
