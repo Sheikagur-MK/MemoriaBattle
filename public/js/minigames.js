@@ -1,161 +1,377 @@
-// ── DEFINICIÓN DE 100+ MINIJUEGOS ────────────────────────────────────────────
-// Cada minijuego tiene: id, name, desc, type(tap/dodge/race/memory/reflex/puzzle),
-// players(min,max), duration(s), instructions
+// ── 20 MINIJUEGOS CON PERSONAJES DIBUJADOS ───────────────────────────────────
 
 const MINIGAMES = [
-  // ── TAP/CLICK RÁPIDO (1-20) ──────────────────────────────
-  {id:1,  name:'¡Banana Frenzy!',       desc:'Toca la pantalla lo más rápido posible',          type:'tap',    min:2,max:8, dur:10},
-  {id:2,  name:'Colecta de Frutas',      desc:'Recoge las frutas que caen del cielo',            type:'catch',  min:2,max:8, dur:15},
-  {id:3,  name:'¡No toques el rojo!',   desc:'Toca solo los círculos amarillos',                type:'tap',    min:2,max:8, dur:12},
-  {id:4,  name:'Suma Rápida',           desc:'Calcula la suma y presiona el resultado',         type:'math',   min:2,max:8, dur:15},
-  {id:5,  name:'Memoria Animal',        desc:'Repite la secuencia de animales',                  type:'memory', min:2,max:4, dur:30},
-  {id:6,  name:'Escalada Veloz',        desc:'Llega a la cima antes que los demás',             type:'race',   min:2,max:8, dur:20},
-  {id:7,  name:'Globos Explosivos',     desc:'Infla tu globo pero no lo revientes',             type:'hold',   min:2,max:8, dur:15},
-  {id:8,  name:'Carrera de Cangrejos',  desc:'Mueve tu cangrejo a la meta',                     type:'race',   min:2,max:6, dur:20},
-  {id:9,  name:'Lluvia de Estrellas',   desc:'Atrapa la mayor cantidad de estrellas',           type:'catch',  min:2,max:8, dur:15},
-  {id:10, name:'Piedra Papel Tijera',   desc:'Gana 3 rondas de P-P-T',                          type:'rps',    min:2,max:8, dur:20},
-  {id:11, name:'Tambor Selvático',      desc:'Sigue el ritmo del tambor',                       type:'rhythm', min:2,max:6, dur:20},
-  {id:12, name:'Puntería Animal',       desc:'Apunta y dispara a los blancos',                  type:'aim',    min:2,max:8, dur:15},
-  {id:13, name:'Laberinto Rápido',      desc:'Sal del laberinto lo antes posible',               type:'maze',   min:2,max:4, dur:30},
-  {id:14, name:'Ruleta de Preguntas',   desc:'Responde preguntas de animales',                  type:'trivia', min:2,max:8, dur:25},
-  {id:15, name:'Saltador Extremo',      desc:'Salta los obstáculos sin caerte',                  type:'dodge',  min:2,max:6, dur:20},
-  {id:16, name:'Colores Locos',         desc:'Presiona el botón del color que se muestra',      type:'reflex', min:2,max:8, dur:15},
-  {id:17, name:'Carreras en la Selva',  desc:'Corre entre los árboles al ritmo de las notas',   type:'race',   min:2,max:8, dur:20},
-  {id:18, name:'Pesca Veloz',           desc:'Pesca la mayor cantidad de peces',                type:'catch',  min:2,max:6, dur:15},
-  {id:19, name:'Bomba Caliente',        desc:'Pasa la bomba antes de que explote',               type:'pass',   min:2,max:8, dur:15},
-  {id:20, name:'Pinball Animal',        desc:'Mantén la bola en juego el mayor tiempo',         type:'reflex', min:2,max:4, dur:20},
-  // ── REFLEJOS (21-40) ──────────────────────────────────────
-  {id:21, name:'Semáforo Loco',         desc:'Para cuando sea rojo, avanza en verde',            type:'reflex', min:2,max:8, dur:15},
-  {id:22, name:'Piso Electrificado',    desc:'Evita los paneles del piso que se iluminan',      type:'dodge',  min:2,max:6, dur:20},
-  {id:23, name:'Disparos del Cielo',    desc:'Esquiva los rayos que caen del cielo',             type:'dodge',  min:2,max:8, dur:20},
-  {id:24, name:'Cocinero Veloz',        desc:'Sirve los pedidos en orden correcto',              type:'sequence',min:2,max:4,dur:25},
-  {id:25, name:'Equilibrista Animal',   desc:'Mantén el balance en la cuerda floja',            type:'balance',min:2,max:4,dur:20},
-  {id:26, name:'Explosión de Notas',    desc:'Presiona las notas musicales a tiempo',           type:'rhythm', min:2,max:8, dur:20},
-  {id:27, name:'Pelota de Nieve',       desc:'Construye el muñeco más alto',                    type:'build',  min:2,max:6, dur:20},
-  {id:28, name:'Surfista Extremo',      desc:'Mantente en la ola el mayor tiempo',              type:'balance',min:2,max:6, dur:20},
-  {id:29, name:'Deslizamiento Ártico',  desc:'Llega primero a la base del glaciar',             type:'race',   min:2,max:8, dur:15},
-  {id:30, name:'Burbuja Ninja',         desc:'Revienta las burbujas de enemigo, no las tuyas',  type:'aim',    min:2,max:6, dur:20},
-  {id:31, name:'Contador Loco',         desc:'Cuenta los animales que aparecen',                type:'count',  min:2,max:8, dur:15},
-  {id:32, name:'Cartas Memoria',        desc:'Encuentra los pares en el menor tiempo',          type:'memory', min:2,max:4, dur:30},
-  {id:33, name:'Twister Selvático',     desc:'Pon manos y pies en los colores correctos',       type:'reflex', min:2,max:6, dur:20},
-  {id:34, name:'Cascada de Bloques',    desc:'Apila los bloques sin que caigan',                type:'build',  min:2,max:4, dur:25},
-  {id:35, name:'Competencia de Ruidos', desc:'Imita el sonido del animal que aparece',          type:'tap',    min:2,max:8, dur:15},
-  {id:36, name:'Esquiva Meteoritos',    desc:'Sobrevive la lluvia de meteoritos',               type:'dodge',  min:2,max:8, dur:20},
-  {id:37, name:'Carrera de Tortugas',   desc:'Guía tu tortuga a la meta (lenta pero segura)',   type:'race',   min:2,max:6, dur:30},
-  {id:38, name:'Ruleta de Colores',     desc:'Adivina en qué color parará la ruleta',           type:'guess',  min:2,max:8, dur:20},
-  {id:39, name:'Cadena Musical',        desc:'Continúa la melodía tocando las notas',           type:'rhythm', min:2,max:6, dur:25},
-  {id:40, name:'Arena de Puños',        desc:'Golpea primero para ganar',                       type:'reflex', min:2,max:8, dur:10},
-  // ── ESTRATEGIA (41-60) ────────────────────────────────────
-  {id:41, name:'Hundir la Flota',       desc:'Encuentra los barcos del enemigo',                type:'strategy',min:2,max:2,dur:40},
-  {id:42, name:'Cuatro en Línea',       desc:'Forma una línea de cuatro fichas',                type:'strategy',min:2,max:2,dur:30},
-  {id:43, name:'Comecocos Animalesco',  desc:'Come todos los puntos sin que te atrapen',        type:'maze',   min:2,max:4, dur:30},
-  {id:44, name:'Torre de Defensa',      desc:'Defiende tu base de los invasores',               type:'strategy',min:2,max:4,dur:35},
-  {id:45, name:'Ping Pong Selvático',   desc:'Marca 5 puntos antes que el rival',               type:'sport',  min:2,max:2, dur:30},
-  {id:46, name:'Fútbol Animal',         desc:'Mete el gol en el tiempo reglamentario',          type:'sport',  min:2,max:6, dur:30},
-  {id:47, name:'Baloncesto Extremo',    desc:'Encesta la mayor cantidad de canastas',           type:'sport',  min:2,max:6, dur:20},
-  {id:48, name:'Voleibol en la Playa',  desc:'El que deje caer el balón pierde',                type:'sport',  min:2,max:6, dur:25},
-  {id:49, name:'Carrera de Obstáculos', desc:'Supera todos los obstáculos hasta la meta',       type:'race',   min:2,max:8, dur:25},
-  {id:50, name:'Batalla de Bolas',      desc:'Golpea a los rivales con bolas de nieve',         type:'aim',    min:2,max:8, dur:25},
-  {id:51, name:'Escape de la Jungla',   desc:'Todos huyen del depredador',                      type:'chase',  min:3,max:8, dur:30},
-  {id:52, name:'Captura la Bandera',    desc:'Lleva la bandera a tu base',                      type:'strategy',min:2,max:8,dur:30},
-  {id:53, name:'Tierra de Nadie',       desc:'El último en quedar en la plataforma gana',       type:'survive',min:2,max:8,dur:30},
-  {id:54, name:'Monstruo de la Isla',   desc:'Escóndete del monstruo',                          type:'hide',   min:3,max:8, dur:25},
-  {id:55, name:'Rompecabezas Veloz',    desc:'Completa el rompecabezas antes que nadie',        type:'puzzle', min:2,max:4, dur:35},
-  {id:56, name:'Tiro al Blanco',        desc:'El arquero más preciso gana',                     type:'aim',    min:2,max:8, dur:20},
-  {id:57, name:'Carrera de Balsas',     desc:'Navega por el río sin caerte',                    type:'race',   min:2,max:6, dur:25},
-  {id:58, name:'Batalla de Pasteles',   desc:'Lanza pasteles a los rivales',                    type:'aim',    min:2,max:8, dur:20},
-  {id:59, name:'Soga Salvaje',          desc:'Jala la soga para arrastrar al rival',            type:'hold',   min:2,max:8, dur:15},
-  {id:60, name:'Baile del Pingüino',    desc:'Sigue los movimientos del pingüino',              type:'rhythm', min:2,max:8, dur:20},
-  // ── COOPERACIÓN (61-80) ───────────────────────────────────
-  {id:61, name:'Puente Colgante',       desc:'Cruza sin caerte',                                type:'balance',min:2,max:6, dur:25},
-  {id:62, name:'Montaña Rusa Loca',     desc:'Mantente en el asiento en la bajada',             type:'balance',min:2,max:8, dur:15},
-  {id:63, name:'Patinaje sobre Hielo',  desc:'Haz la figura más elaborada',                     type:'draw',   min:2,max:6, dur:25},
-  {id:64, name:'Explosión de Color',    desc:'Colorea el mayor área posible',                   type:'draw',   min:2,max:6, dur:20},
-  {id:65, name:'Busca al Espia',        desc:'Adivina quién es el espia entre nosotros',        type:'social', min:3,max:8, dur:40},
-  {id:66, name:'Trivia Animalesca',     desc:'¿Cuánto sabes de los animales?',                  type:'trivia', min:2,max:8, dur:25},
-  {id:67, name:'Carreras en el Barro',  desc:'La pista es resbaladiza ¡cuidado!',               type:'race',   min:2,max:8, dur:20},
-  {id:68, name:'Rey de la Colina',      desc:'Mantente en la cima el mayor tiempo',             type:'survive',min:2,max:8, dur:25},
-  {id:69, name:'Trampolín Acuático',    desc:'El salto más alto y con mejor estilo',            type:'skill',  min:2,max:6, dur:20},
-  {id:70, name:'Concurso de Rugidos',   desc:'Ruge lo más fuerte y preciso posible',            type:'tap',    min:2,max:8, dur:10},
-  {id:71, name:'Puzle del Ecosistema',  desc:'Reconstruye el ecosistema correcto',              type:'puzzle', min:2,max:4, dur:35},
-  {id:72, name:'Carrera de Mariposas',  desc:'Guía tu mariposa al néctar',                      type:'race',   min:2,max:6, dur:20},
-  {id:73, name:'Bola de Fuego',         desc:'Evita las bolas de fuego del volcán',             type:'dodge',  min:2,max:8, dur:20},
-  {id:74, name:'Súper Dados',           desc:'Tira dados especiales y suma el mayor número',    type:'luck',   min:2,max:8, dur:15},
-  {id:75, name:'Pesca de Perlas',       desc:'Encuentra las perlas en el fondo del mar',        type:'seek',   min:2,max:6, dur:25},
-  {id:76, name:'Globo Aerostático',     desc:'Llega más alto sin reventar el globo',            type:'hold',   min:2,max:6, dur:20},
-  {id:77, name:'Sumo de Animales',      desc:'Empuja a tu rival fuera del ring',                type:'push',   min:2,max:4, dur:20},
-  {id:78, name:'Eco del Bosque',        desc:'Repite el eco correctamente',                     type:'memory', min:2,max:6, dur:25},
-  {id:79, name:'Chef Estrella',         desc:'Crea el plato perfecto con los ingredientes',     type:'puzzle', min:2,max:4, dur:30},
-  {id:80, name:'Velocidad del Rayo',    desc:'El primero en presionar cuando aparezca el rayo', type:'reflex', min:2,max:8, dur:10},
-  // ── ESPECIALES (81-100) ───────────────────────────────────
-  {id:81, name:'Maratón Animal',        desc:'Carrera larga con obstáculos variados',           type:'race',   min:2,max:8, dur:30},
-  {id:82, name:'Karaoke Selvático',     desc:'Completa la letra de la canción',                 type:'tap',    min:2,max:8, dur:20},
-  {id:83, name:'Snowboard Extremo',     desc:'Navega la pista de nieve',                        type:'race',   min:2,max:6, dur:25},
-  {id:84, name:'Batalla Espacial',      desc:'Defiende tu planeta de los meteoritos',           type:'dodge',  min:2,max:6, dur:25},
-  {id:85, name:'Tetris Animalesco',     desc:'Acomoda las piezas de animales',                  type:'puzzle', min:2,max:4, dur:30},
-  {id:86, name:'Dragón de Fuego',       desc:'Escapa del dragón por el laberinto',              type:'maze',   min:2,max:6, dur:25},
-  {id:87, name:'Torneo de Lanzamiento', desc:'Lanza el objeto lo más lejos posible',             type:'skill',  min:2,max:8, dur:15},
-  {id:88, name:'Cocodrilo Snapper',     desc:'Evita ser mordido por el cocodrilo',              type:'reflex', min:2,max:8, dur:15},
-  {id:89, name:'Gran Bazar',            desc:'Compra y vende para ganar más',                   type:'econ',   min:2,max:4, dur:30},
-  {id:90, name:'Carrera de Dragones',   desc:'Monta tu dragón a la victoria',                   type:'race',   min:2,max:6, dur:25},
-  {id:91, name:'Estrella de Mar',       desc:'Atrapa la estrella de mar fugaz',                 type:'catch',  min:2,max:6, dur:20},
-  {id:92, name:'Piano Animal',          desc:'Toca la melodía indicada en el piano',            type:'rhythm', min:2,max:4, dur:25},
-  {id:93, name:'Captura del Gigante',   desc:'Todos contra el gigante',                         type:'chase',  min:3,max:8, dur:30},
-  {id:94, name:'Domino Loco',           desc:'Coloca tus fichas estratégicamente',              type:'strategy',min:2,max:4,dur:35},
-  {id:95, name:'Sprint Acuático',       desc:'Carrera de natación al sprint',                   type:'race',   min:2,max:8, dur:15},
-  {id:96, name:'Carnaval Animal',       desc:'Gana el mayor número de premios del carnaval',    type:'tap',    min:2,max:8, dur:20},
-  {id:97, name:'Cazador Nocturno',      desc:'Encuentra presas en la oscuridad',                type:'seek',   min:2,max:6, dur:25},
-  {id:98, name:'Lluvia de Plátanos',    desc:'El plátano más grande vale más puntos',           type:'catch',  min:2,max:8, dur:15},
-  {id:99, name:'Torneo Final',          desc:'Combate de habilidades general',                  type:'mix',    min:2,max:8, dur:30},
-  {id:100,name:'Gran Banana Party',     desc:'El minijuego definitivo con todas las mecánicas', type:'mix',    min:2,max:8, dur:35},
+  { id:1,  name:'¡Lluvia de Bananas!',   desc:'Atrapa las bananas que caen',         type:'catch',   dur:20 },
+  { id:2,  name:'Esquiva el Rayo',        desc:'Muévete para esquivar los rayos',     type:'dodge',   dur:20 },
+  { id:3,  name:'Carrera al Tesoro',      desc:'Sé el primero en llegar',             type:'race',    dur:22 },
+  { id:4,  name:'Globos Locos',           desc:'Explota el mayor número de globos',   type:'tap',     dur:15 },
+  { id:5,  name:'¡No te Quemes!',         desc:'Evita el suelo de fuego',             type:'jump',    dur:20 },
+  { id:6,  name:'Sigue el Ritmo',         desc:'Pulsa al compás de la música',        type:'rhythm',  dur:18 },
+  { id:7,  name:'Batalla de Estrellas',   desc:'Recoge estrellas, evita bombas',      type:'collect', dur:20 },
+  { id:8,  name:'Lanzador de Cocos',      desc:'Apunta y lanza cocos al blanco',      type:'aim',     dur:18 },
+  { id:9,  name:'Plataformas Árticas',    desc:'Salta entre plataformas heladas',     type:'platform',dur:22 },
+  { id:10, name:'Duelo de Reflejos',      desc:'Pulsa cuando el semáforo sea verde',  type:'reflex',  dur:15 },
+  { id:11, name:'Tormenta de Proyectiles',desc:'Esquiva todo lo que cae',             type:'dodge',   dur:22 },
+  { id:12, name:'Carrera de Burbujas',    desc:'Lleva tu burbuja a la meta',          type:'race',    dur:20 },
+  { id:13, name:'Bomba Caliente',         desc:'Pasa la bomba antes de que explote',  type:'pass',    dur:15 },
+  { id:14, name:'Sumo Animal',            desc:'Empuja a los rivales fuera del ring', type:'push',    dur:20 },
+  { id:15, name:'Colecta de Monedas',     desc:'Recoge más monedas que nadie',        type:'collect', dur:18 },
+  { id:16, name:'Salto Extremo',          desc:'Salta los obstáculos sin caer',       type:'jump',    dur:20 },
+  { id:17, name:'Velocidad del Rayo',     desc:'El primero en pulsar cuando aparezca',type:'reflex',  dur:12 },
+  { id:18, name:'Laberinto Selvático',    desc:'Sal del laberinto primero',           type:'maze',    dur:25 },
+  { id:19, name:'Tiro al Blanco',         desc:'El arquero más preciso gana',         type:'aim',     dur:18 },
+  { id:20, name:'Gran Banana Party',      desc:'¡El minijuego definitivo!',           type:'collect', dur:25 },
 ];
 
-// ── 25 SUPER MINIJUEGOS EN EQUIPOS ───────────────────────────────────────────
 const SUPER_MINIGAMES = [
-  {id:1,  name:'Guerra de Nieve',       desc:'Equipo rojo vs azul en batalla de bolas de nieve', type:'team_battle'},
-  {id:2,  name:'Fútbol Animalesco',     desc:'Partido de fútbol entre equipos',                   type:'team_sport'},
-  {id:3,  name:'Captura la Banana',     desc:'Roba la banana del equipo rival',                   type:'team_chase'},
-  {id:4,  name:'Trineos en el Ártico',  desc:'Carrera de trineos por equipos',                    type:'team_race'},
-  {id:5,  name:'Balsa vs Balsa',        desc:'Destruye la balsa del equipo rival',                type:'team_battle'},
-  {id:6,  name:'Trivia de Equipos',     desc:'Compite en conocimiento con tu equipo',             type:'team_trivia'},
-  {id:7,  name:'Volcán Explosivo',      desc:'Empuja al equipo rival al volcán',                  type:'team_push'},
-  {id:8,  name:'Relevo Selvátic',       desc:'Carrera de relevos por la selva',                   type:'team_race'},
-  {id:9,  name:'Batalla de Pintura',    desc:'Pinta más territorio que el rival',                 type:'team_draw'},
-  {id:10, name:'Torre de Animales',     desc:'Construye la torre más alta en equipo',             type:'team_build'},
-  {id:11, name:'Cazadores vs Presas',   desc:'Un equipo caza, el otro escapa',                    type:'team_chase'},
-  {id:12, name:'Defensa del Castillo',  desc:'Defiende o ataca el castillo',                     type:'team_strategy'},
-  {id:13, name:'Tug of War Extremo',    desc:'Jala la soga con todo el equipo',                   type:'team_strength'},
-  {id:14, name:'Sinfonía Animal',       desc:'Crea la mejor melodía en equipo',                   type:'team_rhythm'},
-  {id:15, name:'Invasión Galáctica',    desc:'Equipo A defiende, equipo B ataca',                 type:'team_strategy'},
-  {id:16, name:'Rafting Salvaje',       desc:'Navega el río turbulento en equipo',                type:'team_race'},
-  {id:17, name:'Tornado Animal',        desc:'Sobrevive el tornado en equipo',                    type:'team_survive'},
-  {id:18, name:'Batalla Naval',         desc:'Hunde los barcos del equipo rival',                 type:'team_strategy'},
-  {id:19, name:'Gran Duelo Solar',      desc:'Competencia bajo el sol ardiente',                  type:'team_endurance'},
-  {id:20, name:'Misión en el Desierto', desc:'Cruzad el desierto antes que el rival',             type:'team_race'},
-  {id:21, name:'Coliseo Animal',        desc:'Combate épico de equipos en el coliseo',            type:'team_battle'},
-  {id:22, name:'Tormenta de Selva',     desc:'Sobrevive la tormenta cooperando',                  type:'team_survive'},
-  {id:23, name:'Olimpiadas Animales',   desc:'Competencia de múltiples disciplinas',              type:'team_multi'},
-  {id:24, name:'Maratón Ártico',        desc:'Carrera épica por el ártico helado',                type:'team_race'},
-  {id:25, name:'La Gran Final',         desc:'El super minijuego definitivo de todos los tiempos',type:'team_epic'},
+  { id:1,  name:'Guerra de Nieve',    desc:'Equipos rojo vs azul',  type:'team_battle' },
+  { id:2,  name:'Fútbol Animalesco',  desc:'Mete más goles',        type:'team_sport'  },
+  { id:3,  name:'Captura la Banana',  desc:'Roba la banana rival',  type:'team_chase'  },
+  { id:4,  name:'Tiro con Arco',      desc:'Equipo más preciso',    type:'team_aim'    },
+  { id:5,  name:'Carrera de Relevos', desc:'El equipo más rápido',  type:'team_race'   },
 ];
 
-// ── MOTOR DE MINIJUEGOS (Canvas-based) ───────────────────────────────────────
+// ── DIBUJO DE PERSONAJES TIPO 3D ─────────────────────────────────────────────
+// Cada animal se dibuja con formas geométricas sobre canvas
+const AnimalRenderer = {
+  // Colores base por animal
+  colors: {
+    leon:     { body:'#E8A838', mane:'#8B4513',  detail:'#F4C542' },
+    gorila:   { body:'#4A4A4A', mane:'#2A2A2A',  detail:'#8B7355' },
+    oso:      { body:'#8B6914', mane:'#5C4A1A',  detail:'#D4A057' },
+    pinguino: { body:'#1A1A2E', mane:'#FFFFFF',  detail:'#FF8C00' },
+    tiburon:  { body:'#4682B4', mane:'#2F4F6F',  detail:'#FFFFFF' },
+    orca:     { body:'#1A1A1A', mane:'#FFFFFF',  detail:'#F0F0F0' },
+    elefante: { body:'#808080', mane:'#606060',  detail:'#A0A0A0' },
+    girafa:   { body:'#DAA520', mane:'#8B6914',  detail:'#A0522D' },
+    perro:    { body:'#D2691E', mane:'#A0522D',  detail:'#F4A460' },
+    gato:     { body:'#BC8F8F', mane:'#8B6969',  detail:'#F5DEB3' },
+    hamster:  { body:'#F5DEB3', mane:'#DEB887',  detail:'#FFB6C1' },
+    lobo:     { body:'#778899', mane:'#556677',  detail:'#C0C8D0' },
+  },
+
+  // Dibuja un personaje tipo chibi 3D en (cx, cy) con tamaño r
+  draw(ctx, animal, cx, cy, r, teamColor=null, isSelected=false) {
+    const c = this.colors[animal] || this.colors.perro;
+    const t = Date.now() * 0.003;
+
+    ctx.save();
+    ctx.translate(cx, cy);
+
+    // Sombra en el suelo
+    ctx.fillStyle = 'rgba(0,0,0,0.25)';
+    ctx.beginPath();
+    ctx.ellipse(0, r*0.85, r*0.7, r*0.18, 0, 0, Math.PI*2);
+    ctx.fill();
+
+    // Indicador de equipo / selección
+    if (teamColor || isSelected) {
+      ctx.beginPath();
+      ctx.arc(0, 0, r*1.25, 0, Math.PI*2);
+      ctx.fillStyle = (teamColor || '#FFD700') + '40';
+      ctx.fill();
+      ctx.strokeStyle = teamColor || '#FFD700';
+      ctx.lineWidth   = 3;
+      ctx.stroke();
+    }
+
+    // ── CUERPO (cilindro 3D simulado) ───────────────────────
+    // Gradiente lateral para dar efecto 3D
+    const bodyGrad = ctx.createRadialGradient(-r*0.2, -r*0.1, r*0.1, 0, 0, r*0.9);
+    bodyGrad.addColorStop(0, this._lighten(c.body, 40));
+    bodyGrad.addColorStop(0.6, c.body);
+    bodyGrad.addColorStop(1, this._darken(c.body, 40));
+    ctx.fillStyle = bodyGrad;
+    ctx.beginPath();
+    ctx.ellipse(0, r*0.25, r*0.55, r*0.65, 0, 0, Math.PI*2);
+    ctx.fill();
+    ctx.strokeStyle = this._darken(c.body, 20);
+    ctx.lineWidth   = 1.5;
+    ctx.stroke();
+
+    // ── CABEZA ───────────────────────────────────────────────
+    const headGrad = ctx.createRadialGradient(-r*0.15, -r*0.55, r*0.05, 0, -r*0.5, r*0.45);
+    headGrad.addColorStop(0, this._lighten(c.body, 50));
+    headGrad.addColorStop(0.5, c.body);
+    headGrad.addColorStop(1, this._darken(c.body, 25));
+    ctx.fillStyle = headGrad;
+    ctx.beginPath();
+    ctx.arc(0, -r*0.5, r*0.42, 0, Math.PI*2);
+    ctx.fill();
+    ctx.strokeStyle = this._darken(c.body, 20);
+    ctx.lineWidth   = 1.5;
+    ctx.stroke();
+
+    // Rasgos específicos por animal
+    this['_draw_' + animal]?.(ctx, r, c, t);
+    if (!this['_draw_' + animal]) this._draw_default(ctx, r, c, t);
+
+    // ── OJOS ─────────────────────────────────────────────────
+    const eyeY = -r*0.55;
+    [-r*0.16, r*0.16].forEach(ex => {
+      // Blanco del ojo
+      ctx.fillStyle = '#fff';
+      ctx.beginPath(); ctx.ellipse(ex, eyeY, r*0.1, r*0.11, 0, 0, Math.PI*2); ctx.fill();
+      // Iris
+      ctx.fillStyle = '#2A1A00';
+      ctx.beginPath(); ctx.arc(ex + r*0.02, eyeY, r*0.065, 0, Math.PI*2); ctx.fill();
+      // Brillo
+      ctx.fillStyle = '#fff';
+      ctx.beginPath(); ctx.arc(ex + r*0.04, eyeY - r*0.03, r*0.025, 0, Math.PI*2); ctx.fill();
+    });
+
+    // ── BOCA ─────────────────────────────────────────────────
+    ctx.strokeStyle = this._darken(c.body, 30);
+    ctx.lineWidth   = 1.5;
+    ctx.beginPath();
+    ctx.arc(0, -r*0.38, r*0.12, 0.2, Math.PI - 0.2);
+    ctx.stroke();
+
+    // ── BRAZOS ───────────────────────────────────────────────
+    const armSwing = Math.sin(t) * 0.3;
+    [-1, 1].forEach(side => {
+      ctx.save();
+      ctx.translate(side * r * 0.52, r * 0.1);
+      ctx.rotate(side * (0.4 + armSwing * side));
+      const armGrad = ctx.createLinearGradient(0,0,0,r*0.45);
+      armGrad.addColorStop(0, c.body);
+      armGrad.addColorStop(1, this._darken(c.body,20));
+      ctx.fillStyle = armGrad;
+      ctx.beginPath();
+      ctx.ellipse(0, r*0.22, r*0.14, r*0.28, 0, 0, Math.PI*2);
+      ctx.fill();
+      ctx.restore();
+    });
+
+    // ── PIERNAS ──────────────────────────────────────────────
+    const legSwing = Math.sin(t + Math.PI) * 0.15;
+    [-1, 1].forEach((side, i) => {
+      ctx.save();
+      ctx.translate(side * r * 0.24, r * 0.72);
+      ctx.rotate(side * legSwing * (i===0?1:-1));
+      ctx.fillStyle = this._darken(c.body, 15);
+      ctx.beginPath();
+      ctx.ellipse(0, r*0.18, r*0.16, r*0.22, 0, 0, Math.PI*2);
+      ctx.fill();
+      // Pie
+      ctx.fillStyle = this._darken(c.body, 25);
+      ctx.beginPath();
+      ctx.ellipse(side*r*0.05, r*0.35, r*0.2, r*0.1, 0, 0, Math.PI*2);
+      ctx.fill();
+      ctx.restore();
+    });
+
+    ctx.restore();
+  },
+
+  // Rasgos únicos por animal
+  _draw_leon(ctx, r, c) {
+    // Melena
+    for (let a = 0; a < Math.PI*2; a += Math.PI/6) {
+      ctx.fillStyle = c.mane;
+      ctx.beginPath();
+      ctx.ellipse(Math.cos(a)*r*0.5, -r*0.5+Math.sin(a)*r*0.48, r*0.14, r*0.2, a, 0, Math.PI*2);
+      ctx.fill();
+    }
+    // Hocico
+    ctx.fillStyle = c.detail;
+    ctx.beginPath(); ctx.ellipse(0, -r*0.38, r*0.18, r*0.12, 0, 0, Math.PI*2); ctx.fill();
+    // Nariz
+    ctx.fillStyle = '#C0392B';
+    ctx.beginPath(); ctx.ellipse(0, -r*0.43, r*0.05, r*0.035, 0, 0, Math.PI*2); ctx.fill();
+    // Orejas
+    [-1,1].forEach(s => {
+      ctx.fillStyle = c.body;
+      ctx.beginPath(); ctx.arc(s*r*0.35, -r*0.85, r*0.12, 0, Math.PI*2); ctx.fill();
+      ctx.fillStyle = c.detail;
+      ctx.beginPath(); ctx.arc(s*r*0.35, -r*0.85, r*0.06, 0, Math.PI*2); ctx.fill();
+    });
+  },
+  _draw_pinguino(ctx, r, c) {
+    // Pechera blanca
+    ctx.fillStyle = c.mane;
+    ctx.beginPath(); ctx.ellipse(0, r*0.1, r*0.32, r*0.5, 0, 0, Math.PI*2); ctx.fill();
+    // Pico naranja
+    ctx.fillStyle = c.detail;
+    ctx.beginPath(); ctx.moveTo(-r*0.08,-r*0.42); ctx.lineTo(r*0.08,-r*0.42); ctx.lineTo(0,-r*0.3); ctx.fill();
+    // Orejas/aletas
+    [-1,1].forEach(s => {
+      ctx.fillStyle = c.body;
+      ctx.beginPath(); ctx.ellipse(s*r*0.5, r*0.15, r*0.1, r*0.25, s*0.4, 0, Math.PI*2); ctx.fill();
+    });
+  },
+  _draw_tiburon(ctx, r, c) {
+    // Aleta dorsal
+    ctx.fillStyle = c.body;
+    ctx.beginPath(); ctx.moveTo(0,-r*0.95); ctx.lineTo(-r*0.15,-r*0.62); ctx.lineTo(r*0.15,-r*0.62); ctx.fill();
+    // Panza blanca
+    ctx.fillStyle = c.mane;
+    ctx.beginPath(); ctx.ellipse(0, r*0.2, r*0.3, r*0.45, 0, 0, Math.PI*2); ctx.fill();
+    // Boca con dientes
+    ctx.fillStyle = '#fff';
+    ctx.beginPath(); ctx.arc(0,-r*0.35, r*0.18, 0, Math.PI); ctx.fill();
+    ctx.fillStyle = '#E74C3C';
+    ctx.beginPath(); ctx.arc(0,-r*0.35, r*0.12, 0, Math.PI); ctx.fill();
+  },
+  _draw_elefante(ctx, r, c) {
+    // Trompa
+    ctx.strokeStyle = c.body; ctx.lineWidth = r*0.18;
+    ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(0,-r*0.35); ctx.quadraticCurveTo(r*0.35,-r*0.2, r*0.3,-r*0.0); ctx.stroke();
+    // Orejas grandes
+    [-1,1].forEach(s => {
+      ctx.fillStyle = c.mane;
+      ctx.beginPath(); ctx.ellipse(s*r*0.62, -r*0.5, r*0.28, r*0.35, s*0.3, 0, Math.PI*2); ctx.fill();
+      ctx.fillStyle = c.detail;
+      ctx.beginPath(); ctx.ellipse(s*r*0.62, -r*0.5, r*0.18, r*0.22, s*0.3, 0, Math.PI*2); ctx.fill();
+    });
+  },
+  _draw_girafa(ctx, r, c) {
+    // Cuello largo
+    const neckGrad = ctx.createLinearGradient(-r*0.12,-r*1.1, r*0.12,-r*0.55);
+    neckGrad.addColorStop(0, c.body); neckGrad.addColorStop(1, this._darken(c.body,10));
+    ctx.fillStyle = neckGrad;
+    ctx.beginPath(); ctx.rect(-r*0.15,-r*1.05, r*0.3, r*0.55); ctx.fill();
+    // Manchas
+    [[0,-r*0.7,r*0.08],[r*0.08,-r*0.9,r*0.06],[-r*0.1,-r*0.85,r*0.07]].forEach(([x,y,sr]) => {
+      ctx.fillStyle = c.mane;
+      ctx.beginPath(); ctx.arc(x,y,sr,0,Math.PI*2); ctx.fill();
+    });
+    // Orejitas
+    [-1,1].forEach(s => {
+      ctx.fillStyle = c.body;
+      ctx.beginPath(); ctx.arc(s*r*0.32,-r*0.88,r*0.1,0,Math.PI*2); ctx.fill();
+    });
+  },
+  _draw_gorila(ctx, r, c) {
+    // Cara más ancha
+    ctx.fillStyle = c.mane;
+    ctx.beginPath(); ctx.ellipse(0,-r*0.45, r*0.28, r*0.22, 0, 0, Math.PI*2); ctx.fill();
+    // Nariz ancha
+    ctx.fillStyle = this._darken(c.mane,20);
+    ctx.beginPath(); ctx.ellipse(0,-r*0.42, r*0.12, r*0.08, 0, 0, Math.PI*2); ctx.fill();
+    // Orejas
+    [-1,1].forEach(s => {
+      ctx.fillStyle = c.body;
+      ctx.beginPath(); ctx.arc(s*r*0.42,-r*0.5,r*0.1,0,Math.PI*2); ctx.fill();
+    });
+  },
+  _draw_orca(ctx, r, c) {
+    // Parche blanco
+    ctx.fillStyle = c.mane;
+    ctx.beginPath(); ctx.ellipse(r*0.15,-r*0.52, r*0.2, r*0.18, 0.4, 0, Math.PI*2); ctx.fill();
+    // Aleta dorsal
+    ctx.fillStyle = c.body;
+    ctx.beginPath(); ctx.moveTo(0,-r*0.9); ctx.lineTo(-r*0.12,-r*0.65); ctx.lineTo(r*0.12,-r*0.65); ctx.fill();
+    // Panza blanca
+    ctx.fillStyle = c.mane;
+    ctx.beginPath(); ctx.ellipse(0,r*0.2,r*0.28,r*0.42,0,0,Math.PI*2); ctx.fill();
+  },
+  _draw_oso(ctx, r, c) {
+    ctx.fillStyle = c.detail;
+    ctx.beginPath(); ctx.ellipse(0,-r*0.38, r*0.18, r*0.14, 0, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle = this._darken(c.detail,20);
+    ctx.beginPath(); ctx.arc(0,-r*0.42, r*0.05, 0, Math.PI*2); ctx.fill();
+    [-1,1].forEach(s => {
+      ctx.fillStyle = c.body;
+      ctx.beginPath(); ctx.arc(s*r*0.38,-r*0.85,r*0.14,0,Math.PI*2); ctx.fill();
+      ctx.fillStyle = c.mane;
+      ctx.beginPath(); ctx.arc(s*r*0.38,-r*0.85,r*0.08,0,Math.PI*2); ctx.fill();
+    });
+  },
+  _draw_perro(ctx, r, c) {
+    // Orejas caídas
+    [-1,1].forEach(s => {
+      ctx.fillStyle = c.mane;
+      ctx.beginPath(); ctx.ellipse(s*r*0.42,-r*0.68,r*0.14,r*0.28,s*0.5,0,Math.PI*2); ctx.fill();
+    });
+    ctx.fillStyle = c.detail;
+    ctx.beginPath(); ctx.ellipse(0,-r*0.38,r*0.16,r*0.11,0,0,Math.PI*2); ctx.fill();
+    ctx.fillStyle = this._darken(c.detail,20);
+    ctx.beginPath(); ctx.arc(0,-r*0.43,r*0.05,0,Math.PI*2); ctx.fill();
+  },
+  _draw_gato(ctx, r, c) {
+    // Orejas puntiagudas
+    [-1,1].forEach(s => {
+      ctx.fillStyle = c.body;
+      ctx.beginPath(); ctx.moveTo(s*r*0.15,-r*0.88); ctx.lineTo(s*r*0.42,-r*0.72); ctx.lineTo(s*r*0.28,-r*0.62); ctx.fill();
+      ctx.fillStyle = '#FFB6C1';
+      ctx.beginPath(); ctx.moveTo(s*r*0.16,-r*0.83); ctx.lineTo(s*r*0.38,-r*0.71); ctx.lineTo(s*r*0.28,-r*0.65); ctx.fill();
+    });
+    // Bigotes
+    ctx.strokeStyle = this._darken(c.body,30); ctx.lineWidth = 1;
+    [[-r*0.06,-r*0.38,-r*0.4,-r*0.36],[[-r*0.06,-r*0.4,-r*0.4,-r*0.44]]].forEach(l => {
+      if (!Array.isArray(l[0])) {
+        ctx.beginPath(); ctx.moveTo(l[0],l[1]); ctx.lineTo(l[2],l[3]); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(-l[0],l[1]); ctx.lineTo(-l[2],l[3]); ctx.stroke();
+      }
+    });
+  },
+  _draw_hamster(ctx, r, c) {
+    // Mejillas gordas
+    [-1,1].forEach(s => {
+      ctx.fillStyle = c.detail;
+      ctx.beginPath(); ctx.arc(s*r*0.38,-r*0.46,r*0.18,0,Math.PI*2); ctx.fill();
+    });
+    // Orejitas redondas
+    [-1,1].forEach(s => {
+      ctx.fillStyle = c.body;
+      ctx.beginPath(); ctx.arc(s*r*0.35,-r*0.88,r*0.12,0,Math.PI*2); ctx.fill();
+      ctx.fillStyle = '#FFB6C1';
+      ctx.beginPath(); ctx.arc(s*r*0.35,-r*0.88,r*0.07,0,Math.PI*2); ctx.fill();
+    });
+    // Nariz chiquita
+    ctx.fillStyle = '#FF9999';
+    ctx.beginPath(); ctx.arc(0,-r*0.43,r*0.04,0,Math.PI*2); ctx.fill();
+  },
+  _draw_lobo(ctx, r, c) {
+    // Hocico
+    ctx.fillStyle = c.detail;
+    ctx.beginPath(); ctx.ellipse(0,-r*0.38,r*0.2,r*0.14,0,0,Math.PI*2); ctx.fill();
+    // Orejas puntas
+    [-1,1].forEach(s => {
+      ctx.fillStyle = c.body;
+      ctx.beginPath(); ctx.moveTo(s*r*0.12,-r*0.88); ctx.lineTo(s*r*0.4,-r*0.7); ctx.lineTo(s*r*0.22,-r*0.62); ctx.fill();
+      ctx.fillStyle = '#FFB6C1';
+      ctx.beginPath(); ctx.moveTo(s*r*0.14,-r*0.84); ctx.lineTo(s*r*0.36,-r*0.71); ctx.lineTo(s*r*0.24,-r*0.66); ctx.fill();
+    });
+    ctx.fillStyle = '#3A2A1A';
+    ctx.beginPath(); ctx.arc(0,-r*0.43,r*0.06,0,Math.PI*2); ctx.fill();
+  },
+  _draw_default(ctx, r, c) {
+    ctx.fillStyle = c.detail;
+    ctx.beginPath(); ctx.arc(0,-r*0.4,r*0.08,0,Math.PI*2); ctx.fill();
+  },
+
+  // Helpers de color
+  _lighten(hex, amt) {
+    const n = parseInt(hex.replace('#',''),16);
+    const r = Math.min(255,((n>>16)&0xff)+amt);
+    const g = Math.min(255,((n>>8)&0xff)+amt);
+    const b = Math.min(255,(n&0xff)+amt);
+    return `rgb(${r},${g},${b})`;
+  },
+  _darken(hex, amt) { return this._lighten(hex, -amt); },
+};
+
+// ── MOTOR DE MINIJUEGOS ───────────────────────────────────────────────────────
 class MinigameEngine {
-  constructor(canvasId, playerId, playerList, mgData, onFinish) {
-    this.canvas    = document.getElementById(canvasId);
-    this.ctx       = this.canvas.getContext('2d');
-    this.playerId  = playerId;
-    this.players   = playerList;
-    this.data      = mgData;
-    this.onFinish  = onFinish;
-    this.running   = false;
-    this.scores    = {};
-    playerList.forEach(p => this.scores[p.id] = 0);
-    this.resize();
-    window.addEventListener('resize', () => this.resize());
+  constructor(canvasId, selfId, players, mgData, onFinish) {
+    this.canvas   = document.getElementById(canvasId);
+    this.ctx      = this.canvas.getContext('2d');
+    this.selfId   = selfId;
+    this.players  = players;  // array de {id, username, animal, color, team}
+    this.data     = mgData;
+    this.onFinish = onFinish;
+    this.running  = false;
+    this.scores   = {};
+    players.forEach(p => this.scores[p.id] = 0);
+
+    this._resize();
+    window.addEventListener('resize', () => this._resize());
   }
 
-  resize() {
+  _resize() {
     this.canvas.width  = this.canvas.offsetWidth  * devicePixelRatio;
     this.canvas.height = this.canvas.offsetHeight * devicePixelRatio;
     this.ctx.scale(devicePixelRatio, devicePixelRatio);
@@ -167,246 +383,608 @@ class MinigameEngine {
     this.running   = true;
     this.startTime = Date.now();
     this.duration  = (this.data.dur || 20) * 1000;
-    this._initGame();
+    this._setup();
+    this._bindInput();
     this._loop();
   }
 
-  _initGame() {
-    const type = this.data.type;
-    this.objects = [];
-    this.myScore = 0;
-    this.playerPos = { x: this.W / 2, y: this.H - 80 };
+  destroy() { this.running = false; }
 
-    // Generar objetos según tipo
-    if (type === 'catch' || type === 'tap') {
-      for (let i = 0; i < 5; i++) this._spawnObject();
-    } else if (type === 'dodge') {
-      this.obstacles = [];
-      for (let i = 0; i < 3; i++) this._spawnObstacle();
-    } else if (type === 'race') {
-      this.playerPosY = this.H - 60;
-    } else if (type === 'memory') {
-      this._initMemory();
+  // ── SETUP POR TIPO ────────────────────────────────────────
+  _setup() {
+    this.objs     = [];
+    this.myX      = this.W / 2;
+    this.myY      = this.H * 0.75;
+    this.myVx     = 0;
+    this.myVy     = 0;
+    this.score    = 0;
+    this.frame    = 0;
+    this.ground   = this.H * 0.82;
+    this.jumping  = false;
+    this.botScores= {};
+    this.players.filter(p => p.id !== this.selfId)
+      .forEach(p => this.botScores[p.id] = 0);
+
+    const t = this.data.type;
+    if (t === 'catch' || t === 'collect') this._spawnItems(8);
+    if (t === 'dodge' || t === 'jump')    this._spawnObstacles(4);
+    if (t === 'race')  { this.myY = this.H*0.8; this.raceX = 80; }
+    if (t === 'tap')   this._spawnTapItems(12);
+    if (t === 'reflex'){ this.light = 'red'; this.lightTimer = 0; this.reacted = false; }
+    if (t === 'rhythm'){ this.beat = 0; this.nextBeat = 800; this.combo = 0; }
+    if (t === 'aim')   { this.targets = []; this._spawnTargets(5); }
+    if (t === 'maze')  this._buildMaze();
+    if (t === 'platform') this._buildPlatforms();
+  }
+
+  _spawnItems(n) {
+    for (let i = 0; i < n; i++) this.objs.push(this._newItem());
+  }
+  _newItem() {
+    const items = ['🍌','⭐','💎','🍊','🎁'];
+    const vals   = [3,8,15,4,10];
+    const idx    = Math.floor(Math.random()*items.length);
+    return { x:50+Math.random()*(this.W-100), y:-30-Math.random()*300,
+      vy:1.5+Math.random()*2.5, r:18, emoji:items[idx], val:vals[idx], hit:false };
+  }
+
+  _spawnObstacles(n) {
+    for (let i = 0; i < n; i++) {
+      this.objs.push({
+        x: Math.random()*this.W, y: -50-Math.random()*300,
+        vy: 3+Math.random()*3, r:22, type:'obs', emoji:'🔥', hit:false
+      });
     }
-
-    // Input universal
-    this.canvas.addEventListener('click',     e => this._handleClick(e));
-    this.canvas.addEventListener('mousemove', e => this._handleMove(e));
-    this.canvas.addEventListener('touchstart',e => { e.preventDefault(); this._handleClick(e.touches[0]); }, {passive:false});
-    this.canvas.addEventListener('touchmove', e => { e.preventDefault(); this._handleMove(e.touches[0]); }, {passive:false});
   }
 
-  _spawnObject() {
-    this.objects.push({
-      x: 50 + Math.random() * (this.W - 100),
-      y: -30 - Math.random() * 200,
-      vy: 2 + Math.random() * 3,
-      r: 20 + Math.random() * 15,
-      emoji: ['🍌','⭐','🍊','🍎','💎'][Math.floor(Math.random() * 5)],
-      value: [5, 10, 3, 4, 15][Math.floor(Math.random() * 5)]
-    });
+  _spawnTapItems(n) {
+    const emojis = ['🎈','🎈','🎈','💣'];
+    for (let i = 0; i < n; i++) {
+      this.objs.push({
+        x:60+Math.random()*(this.W-120), y:100+Math.random()*(this.H-200),
+        r:28, emoji:emojis[Math.floor(Math.random()*emojis.length)],
+        vy:-0.3-Math.random()*0.5, life:1, popped:false
+      });
+    }
   }
 
-  _spawnObstacle() {
-    this.obstacles.push({
-      x: Math.random() * this.W,
-      y: -30,
-      vy: 3 + Math.random() * 4,
-      r: 25,
-      emoji: '🔥'
-    });
+  _spawnTargets(n) {
+    for (let i = 0; i < n; i++) {
+      this.targets.push({
+        x:80+Math.random()*(this.W-160), y:80+Math.random()*(this.H*0.5),
+        r:30, speed:(Math.random()-0.5)*3, vy:(Math.random()-0.5)*2, hit:false, alpha:1
+      });
+    }
   }
 
-  _initMemory() {
-    const seq = [];
-    for (let i = 0; i < 5; i++) seq.push(Math.floor(Math.random() * 4));
-    this.memSeq   = seq;
-    this.memInput = [];
-    this.memPhase = 'show'; // show | input
-    this.memIdx   = 0;
-    this.memTimer = 0;
+  _buildPlatforms() {
+    this.platforms = [];
+    const rows = 5;
+    for (let r = 0; r < rows; r++) {
+      const y = this.H*0.75 - r*this.H*0.15;
+      for (let c = 0; c < 3; c++) {
+        this.platforms.push({ x:c*(this.W/3)+20, y, w:this.W/3-30, h:14 });
+      }
+    }
+    this.myY    = this.H*0.8;
+    this.myVy   = 0;
+    this.myPosY = this.H*0.8;
+    this.goalY  = 60;
   }
 
-  _handleClick(e) {
-    if (!this.running) return;
-    const rect = this.canvas.getBoundingClientRect();
-    const mx = (e.clientX || e.pageX) - rect.left;
-    const my = (e.clientY || e.pageY) - rect.top;
-
-    if (this.data.type === 'catch' || this.data.type === 'tap') {
-      for (let i = this.objects.length - 1; i >= 0; i--) {
-        const o = this.objects[i];
-        if (Math.hypot(mx - o.x, my - o.y) < o.r) {
-          this.myScore += o.value;
-          this.objects.splice(i, 1);
-          this._spawnObject();
-          this._playSound('catch');
-          break;
+  _buildMaze() {
+    // Laberinto simple con paredes
+    this.walls = [];
+    this.mazeX = 40; this.mazeY = this.H-80;
+    this.goalX = this.W-40; this.goalY = 60;
+    // Paredes horizontales
+    const rows = 5, cols = 5;
+    const cw = (this.W-60)/cols, ch = (this.H-100)/rows;
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < cols; c++) {
+        if (Math.random() > 0.45 && !(r===rows-1&&c===cols-1)) {
+          this.walls.push({ x:30+c*cw+cw*0.2, y:50+r*ch, w:cw*0.6, h:10 });
         }
       }
-    } else if (this.data.type === 'reflex') {
-      this.myScore += 10;
     }
   }
 
-  _handleMove(e) {
-    if (!this.running) return;
-    const rect = this.canvas.getBoundingClientRect();
-    this.playerPos.x = (e.clientX || e.pageX) - rect.left;
-    this.playerPos.y = (e.clientY || e.pageY) - rect.top;
+  // ── INPUT ─────────────────────────────────────────────────
+  _bindInput() {
+    this.keysDown = {};
+    this._keyDown = e => { this.keysDown[e.key] = true; this._onKey(e.key); };
+    this._keyUp   = e => { this.keysDown[e.key] = false; };
+    this._click   = e => { this._onClick(e); };
+    this._touch   = e => { e.preventDefault(); this._onTouch(e); };
+    this._touchM  = e => { e.preventDefault(); this._onTouchMove(e); };
+    window.addEventListener('keydown', this._keyDown);
+    window.addEventListener('keyup',   this._keyUp);
+    this.canvas.addEventListener('click',      this._click);
+    this.canvas.addEventListener('touchstart', this._touch,  {passive:false});
+    this.canvas.addEventListener('touchmove',  this._touchM, {passive:false});
   }
 
+  _unbindInput() {
+    window.removeEventListener('keydown', this._keyDown);
+    window.removeEventListener('keyup',   this._keyUp);
+    this.canvas.removeEventListener('click',      this._click);
+    this.canvas.removeEventListener('touchstart', this._touch);
+    this.canvas.removeEventListener('touchmove',  this._touchM);
+  }
+
+  _onKey(key) {
+    if (key === ' ' || key === 'ArrowUp' || key === 'w') {
+      if (!this.jumping && (this.data.type === 'jump' || this.data.type === 'platform')) {
+        this.myVy = -14; this.jumping = true;
+      }
+    }
+    if (this.data.type === 'reflex' && key === ' ') this._reactReflex();
+    if (this.data.type === 'rhythm' && key === ' ') this._reactRhythm();
+  }
+
+  _onClick(e) {
+    const rect = this.canvas.getBoundingClientRect();
+    const mx   = (e.clientX - rect.left);
+    const my   = (e.clientY - rect.top);
+    this._handleClick(mx, my);
+  }
+
+  _onTouch(e) {
+    const rect = this.canvas.getBoundingClientRect();
+    const t    = e.touches[0];
+    const mx   = t.clientX - rect.left;
+    const my   = t.clientY - rect.top;
+    this._handleClick(mx, my);
+  }
+
+  _onTouchMove(e) {
+    const rect = this.canvas.getBoundingClientRect();
+    const t    = e.touches[0];
+    this.myX   = t.clientX - rect.left;
+    if (this.data.type === 'maze') this.mazeX = this.myX;
+  }
+
+  _handleClick(mx, my) {
+    const t = this.data.type;
+    if (t === 'catch' || t === 'collect') {
+      this.objs.forEach(o => {
+        if (!o.hit && Math.hypot(mx-o.x, my-o.y) < o.r+10) {
+          o.hit = true; this.score += o.val;
+          setTimeout(() => { Object.assign(o, this._newItem()); o.hit = false; }, 300);
+        }
+      });
+    }
+    if (t === 'tap') {
+      this.objs.forEach(o => {
+        if (!o.popped && Math.hypot(mx-o.x, my-o.y) < o.r+10) {
+          o.popped = true;
+          this.score += o.emoji === '🎈' ? 5 : -8;
+          setTimeout(() => { o.popped=false; o.x=60+Math.random()*(this.W-120);
+            o.y=100+Math.random()*(this.H-200); o.emoji=Math.random()<0.75?'🎈':'💣'; }, 400);
+        }
+      });
+    }
+    if (t === 'aim') {
+      this.targets.forEach(tg => {
+        if (!tg.hit && Math.hypot(mx-tg.x, my-tg.y) < tg.r+8) {
+          tg.hit = true; this.score += 10;
+          setTimeout(() => {
+            Object.assign(tg, { x:80+Math.random()*(this.W-160), y:80+Math.random()*(this.H*0.5), hit:false, alpha:1 });
+            this._spawnTargets(1);
+          }, 500);
+        }
+      });
+    }
+    if (t === 'reflex') this._reactReflex();
+    if (t === 'rhythm') this._reactRhythm();
+    // Salto por tap
+    if ((t === 'jump' || t === 'platform') && !this.jumping) {
+      this.myVy = -14; this.jumping = true;
+    }
+  }
+
+  _reactReflex() {
+    if (this.light === 'green' && !this.reacted) {
+      this.reacted = true; this.score += 20;
+    } else if (this.light === 'red') {
+      this.score = Math.max(0, this.score - 10);
+    }
+  }
+
+  _reactRhythm() {
+    const elapsed = Date.now() - this.startTime;
+    const dist    = Math.abs(elapsed % this.nextBeat - this.nextBeat/2);
+    if (dist < 120) { this.score += 10 + this.combo*2; this.combo++; }
+    else            { this.combo = 0; }
+  }
+
+  // ── LOOP ──────────────────────────────────────────────────
   _loop() {
     if (!this.running) return;
     const elapsed = Date.now() - this.startTime;
     const pct     = Math.max(0, 1 - elapsed / this.duration);
 
-    // Timer bar
+    // Timer UI
     const fill = document.getElementById('mg-timer-fill');
     const txt  = document.getElementById('mg-timer-text');
-    if (fill) fill.style.width = (pct * 100) + '%';
-    if (txt)  txt.textContent  = Math.ceil((this.duration - elapsed) / 1000) + 's';
+    if (fill) fill.style.width = (pct*100)+'%';
+    if (fill) fill.style.background = pct < 0.3
+      ? 'linear-gradient(90deg,#E74C3C,#ff6b6b)'
+      : 'linear-gradient(90deg,#00b09b,#FFD700)';
+    if (txt)  txt.textContent = Math.ceil((this.duration-elapsed)/1000)+'s';
 
-    this._update();
+    this._update(elapsed);
     this._draw();
+    this.frame++;
 
-    if (elapsed >= this.duration) {
-      this.running = false;
-      this._finish();
-      return;
-    }
+    if (elapsed >= this.duration) { this.running = false; this._unbindInput(); this._finish(); return; }
     requestAnimationFrame(() => this._loop());
   }
 
-  _update() {
-    const type = this.data.type;
+  // ── UPDATE ────────────────────────────────────────────────
+  _update(elapsed) {
+    const t   = this.data.type;
+    const spd = 4.5;
 
-    if (type === 'catch' || type === 'tap') {
-      this.objects.forEach(o => {
+    // Movimiento horizontal base (WASD / flechas)
+    if (this.keysDown['ArrowLeft']  || this.keysDown['a'] || this.keysDown['A']) this.myX -= spd;
+    if (this.keysDown['ArrowRight'] || this.keysDown['d'] || this.keysDown['D']) this.myX += spd;
+    if ((t==='maze'||t==='race') && (this.keysDown['ArrowUp']||this.keysDown['w'])) this.myY -= spd*0.8;
+    if ((t==='maze')             && (this.keysDown['ArrowDown']||this.keysDown['s'])) this.myY += spd*0.8;
+    this.myX = Math.max(24, Math.min(this.W-24, this.myX));
+    this.myY = Math.max(24, Math.min(this.H-24, this.myY));
+
+    // Gravedad para jump/platform
+    if (t === 'jump' || t === 'platform') {
+      this.myVy += 0.7;
+      this.myY  += this.myVy;
+      if (t === 'platform') {
+        this.platforms.forEach(pl => {
+          if (this.myVy>0 && this.myY>pl.y && this.myY<pl.y+pl.h+20 &&
+              this.myX>pl.x && this.myX<pl.x+pl.w) {
+            this.myY = pl.y; this.myVy = 0; this.jumping = false;
+          }
+        });
+        if (this.myY >= this.H*0.9) { this.myY = this.H*0.9; this.myVy=0; this.jumping=false; }
+        if (this.myY <= this.goalY+20) { this.score += 30; this.myY = this.H*0.8; }
+      } else {
+        if (this.myY >= this.ground) { this.myY=this.ground; this.myVy=0; this.jumping=false; }
+      }
+    }
+
+    // Bots (movimiento simulado)
+    this.players.filter(p=>p.id!==this.selfId).forEach(p => {
+      this.botScores[p.id] = (this.botScores[p.id]||0) + (Math.random()*0.15);
+    });
+
+    // Objetos cayendo
+    if (t==='catch'||t==='collect'||t==='dodge') {
+      this.objs.forEach(o => {
         o.y += o.vy;
-        if (o.y > this.H + 40) {
-          o.y = -30;
-          o.x = 50 + Math.random() * (this.W - 100);
+        if (o.y > this.H+40) {
+          o.y = -30; o.x = 50+Math.random()*(this.W-100);
+        }
+        if (t!=='dodge' && !o.hit && Math.hypot(this.myX-o.x, this.myY-o.y)<o.r+20) {
+          o.hit=true; this.score+=o.val;
+          setTimeout(()=>{Object.assign(o,this._newItem());o.hit=false;},200);
+        }
+        if (t==='dodge' && !o.hit && Math.hypot(this.myX-o.x, this.myY-o.y)<o.r+16) {
+          this.score = Math.max(0, this.score-5);
+          o.hit=true; setTimeout(()=>{o.hit=false;o.y=-30;o.x=Math.random()*this.W;},500);
         }
       });
-    } else if (type === 'dodge') {
-      this.obstacles.forEach(o => {
-        o.y += o.vy;
-        if (o.y > this.H + 40) { o.y = -30; o.x = Math.random() * this.W; }
-        // Check collision with player
-        if (Math.hypot(this.playerPos.x - o.x, this.playerPos.y - o.y) < o.r + 20) {
-          this.myScore = Math.max(0, this.myScore - 5);
+      this.score += 0.02; // sobrevivir da puntos
+    }
+
+    // Semáforo
+    if (t === 'reflex') {
+      this.lightTimer += 16;
+      if (this.lightTimer > (this.light==='red' ? 2000+Math.random()*2000 : 1200)) {
+        this.lightTimer = 0; this.reacted = false;
+        this.light = this.light==='red' ? 'green' : 'red';
+      }
+    }
+
+    // Race
+    if (t === 'race') {
+      if (this.keysDown['ArrowLeft']||this.keysDown['a']) this.raceX -= spd;
+      if (this.keysDown['ArrowRight']||this.keysDown['d']) this.raceX += spd;
+      this.raceX = Math.max(40, Math.min(this.W-40, this.raceX));
+      if (this.myY < 60) { this.score += 50; this.myY = this.H*0.8; }
+      this.myY -= 1.4;
+      if (this.myY < 60) this.myY = 60;
+      this.score = Math.max(0, (this.H*0.8 - this.myY));
+    }
+
+    // Targets
+    if (t==='aim') {
+      this.targets.forEach(tg => {
+        if (!tg.hit) { tg.x += tg.speed; tg.y += tg.vy;
+          if (tg.x<40||tg.x>this.W-40) tg.speed*=-1;
+          if (tg.y<40||tg.y>this.H*0.65) tg.vy*=-1;
         }
       });
-      this.myScore += 0.05; // survives
-    } else if (type === 'race') {
-      if (this.playerPosY > 60) this.playerPosY -= 1.5;
-      this.myScore = Math.floor(((this.H - 60) - this.playerPosY));
+    }
+
+    // Maze: colisiones con paredes
+    if (t==='maze') {
+      this.walls.forEach(w => {
+        if (this.mazeX>w.x-15&&this.mazeX<w.x+w.w+15&&this.myY>w.y-15&&this.myY<w.y+w.h+15)
+          this.myY += 3;
+      });
+      if (this.mazeX > this.W-50 && this.myY < 100) this.score += 60;
     }
   }
 
+  // ── DRAW ──────────────────────────────────────────────────
   _draw() {
     const ctx = this.ctx;
-    ctx.clearRect(0, 0, this.W, this.H);
+    const t   = this.data.type;
+    ctx.clearRect(0,0,this.W,this.H);
 
-    // Fondo temático según bioma
-    const bg = this._getBg();
-    ctx.fillStyle = bg.bg;
-    ctx.fillRect(0, 0, this.W, this.H);
+    // Fondo temático
+    this._drawBg(t);
 
-    // Grid decorativo
-    ctx.strokeStyle = 'rgba(255,255,255,0.05)';
-    ctx.lineWidth = 1;
-    for (let x = 0; x < this.W; x += 60) { ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,this.H); ctx.stroke(); }
-    for (let y = 0; y < this.H; y += 60) { ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(this.W,y); ctx.stroke(); }
+    // Objetos del juego
+    this._drawGameObjects(t);
 
-    const type = this.data.type;
-
-    if (type === 'catch' || type === 'tap') {
-      // Objetos cayendo
-      this.objects.forEach(o => {
-        ctx.font = `${o.r * 1.5}px serif`;
-        ctx.textAlign = 'center';
-        ctx.fillText(o.emoji, o.x, o.y + o.r);
-      });
-      // Mi personaje
-      this._drawPlayerCursor(this.playerPos.x, this.playerPos.y);
-    } else if (type === 'dodge') {
-      this.obstacles.forEach(o => {
-        ctx.font = '40px serif'; ctx.textAlign = 'center';
-        ctx.fillText(o.emoji, o.x, o.y + 20);
-      });
-      this._drawPlayerCursor(this.playerPos.x, this.playerPos.y);
-    } else if (type === 'race') {
-      // Pista
-      ctx.fillStyle = 'rgba(255,255,255,0.1)';
-      ctx.fillRect(this.W / 2 - 40, 60, 80, this.H - 120);
-      // Meta
-      ctx.font = '30px serif'; ctx.textAlign = 'center';
-      ctx.fillText('🏁', this.W / 2, 90);
-      // Jugador
-      const self = this.players.find(p => p.id === this.playerId);
-      ctx.font = '40px serif';
-      ctx.fillText(self ? ANIMALS_DATA[self.animal]?.emoji || '🐾' : '🐾',
-        this.W / 2, this.playerPosY);
+    // Mi personaje
+    const me = this.players.find(p=>p.id===this.selfId);
+    if (me) {
+      const px = t==='race' ? this.raceX : this.myX;
+      AnimalRenderer.draw(ctx, me.animal, px, this.myY, 32, me.color, true);
     }
 
-    // Score
-    ctx.fillStyle = '#FFD700';
-    ctx.font = 'bold 22px sans-serif';
-    ctx.textAlign = 'left';
-    ctx.fillText(`⭐ ${Math.floor(this.myScore)}`, 16, 36);
+    // Bots (fantasmas visuales en posiciones generadas)
+    this.players.filter(p=>p.id!==this.selfId).forEach((p,i) => {
+      const bx = 80+i*(this.W-160)/Math.max(1,this.players.length-1);
+      const by = this.ground - (this.botScores[p.id]||0)*0.8;
+      AnimalRenderer.draw(ctx, p.animal, bx, Math.max(60,by), 26, p.color, false);
+    });
 
-    // Mini ranking top 3 (simulado)
-    ctx.fillStyle = 'rgba(0,0,0,0.5)';
-    ctx.fillRect(this.W - 160, 8, 152, 76);
-    ctx.fillStyle = '#fff';
-    ctx.font = 'bold 12px sans-serif';
-    ctx.textAlign = 'left';
-    ctx.fillText('🏆 Ranking', this.W - 148, 26);
-    this.players.slice(0, 3).forEach((p, i) => {
-      ctx.fillStyle = i === 0 ? '#FFD700' : i === 1 ? '#ccc' : '#CD7F32';
-      ctx.fillText(`${i+1}. ${p.username.slice(0,10)}`, this.W - 148, 46 + i * 16);
+    // Score panel
+    this._drawScorePanel();
+  }
+
+  _drawBg(t) {
+    const ctx = this.ctx;
+    const bgs = {
+      catch:   ['#0a1628','#1a2840'],
+      collect: ['#0a2010','#142d18'],
+      dodge:   ['#1a0a28','#2d1440'],
+      jump:    ['#0a1a28','#142535'],
+      race:    ['#0d2010','#1a3018'],
+      tap:     ['#1a1a0a','#2d2d14'],
+      reflex:  ['#0a0a0a','#1a1a1a'],
+      rhythm:  ['#1a0028','#2d003f'],
+      aim:     ['#1a0a0a','#2d1414'],
+      maze:    ['#0a1a0a','#142514'],
+      platform:['#0a0a1a','#141428'],
+    };
+    const [c1,c2] = bgs[t]||['#080c14','#0d1420'];
+    const grad = ctx.createLinearGradient(0,0,0,this.H);
+    grad.addColorStop(0,c1); grad.addColorStop(1,c2);
+    ctx.fillStyle = grad; ctx.fillRect(0,0,this.W,this.H);
+
+    // Estrellas de fondo
+    ctx.fillStyle='rgba(255,255,255,0.4)';
+    for (let i=0;i<30;i++) {
+      const x=(Math.sin(i*234.5)*0.5+0.5)*this.W;
+      const y=(Math.cos(i*567.8)*0.5+0.5)*this.H*0.7;
+      ctx.beginPath(); ctx.arc(x,y,1,0,Math.PI*2); ctx.fill();
+    }
+
+    // Suelo
+    const gGrad = ctx.createLinearGradient(0,this.ground-10,0,this.ground+30);
+    gGrad.addColorStop(0,'rgba(255,255,255,0.08)');
+    gGrad.addColorStop(1,'rgba(0,0,0,0)');
+    ctx.fillStyle = gGrad;
+    ctx.fillRect(0,this.ground-10,this.W,40);
+
+    ctx.strokeStyle='rgba(255,255,255,0.12)';
+    ctx.lineWidth=2;
+    ctx.beginPath(); ctx.moveTo(0,this.ground); ctx.lineTo(this.W,this.ground); ctx.stroke();
+
+    // Elementos de fondo por tipo
+    if (t==='reflex') this._drawSemaforo();
+    if (t==='platform') this._drawPlatformBg();
+    if (t==='maze') this._drawMazeBg();
+    if (t==='race') this._drawRaceBg();
+  }
+
+  _drawSemaforo() {
+    const ctx=this.ctx;
+    const cx=this.W/2, cy=80;
+    ctx.fillStyle='#222'; this._rr(ctx,cx-30,cy-55,60,110,10); ctx.fill();
+    ctx.strokeStyle='#555'; ctx.lineWidth=2; ctx.stroke();
+    [{c:this.light==='red'?'#FF3B30':'#330000',y:cy-28},
+     {c:'#222200',y:cy},
+     {c:this.light==='green'?'#34C759':'#003300',y:cy+28}
+    ].forEach(({c,y})=>{
+      ctx.fillStyle=c; ctx.beginPath(); ctx.arc(cx,y,14,0,Math.PI*2); ctx.fill();
+    });
+    ctx.fillStyle=this.light==='green'?'#34C759':'#FF3B30';
+    ctx.font='bold 14px sans-serif'; ctx.textAlign='center';
+    ctx.fillText(this.light==='green'?'¡PULSA!':'Espera…',cx,cy+70);
+  }
+
+  _drawPlatformBg() {
+    if (!this.platforms) return;
+    const ctx=this.ctx;
+    ctx.fillStyle='#FFD700';
+    // Meta
+    ctx.font='24px serif'; ctx.textAlign='center';
+    ctx.fillText('🏁',this.W/2,this.goalY+20);
+    this.platforms.forEach(pl => {
+      const g=ctx.createLinearGradient(pl.x,pl.y,pl.x,pl.y+pl.h);
+      g.addColorStop(0,'#A8E6CF'); g.addColorStop(1,'#5CB85C');
+      ctx.fillStyle=g;
+      this._rr(ctx,pl.x,pl.y,pl.w,pl.h,5); ctx.fill();
+      ctx.strokeStyle='#4A9A4A'; ctx.lineWidth=1.5; ctx.stroke();
     });
   }
 
-  _getBg() {
-    const bgs = [
-      {bg:'#0a1628'},
-      {bg:'#1a0a2e'},
-      {bg:'#0d2818'},
-      {bg:'#1a1500'},
-      {bg:'#001a2e'}
-    ];
-    return bgs[this.data.id % bgs.length];
+  _drawMazeBg() {
+    if (!this.walls) return;
+    const ctx=this.ctx;
+    // Meta
+    ctx.font='24px serif'; ctx.textAlign='center';
+    ctx.fillText('🏆',this.W-40,70);
+    this.walls.forEach(w => {
+      const g=ctx.createLinearGradient(w.x,w.y,w.x+w.w,w.y+w.h);
+      g.addColorStop(0,'#4ECDC4'); g.addColorStop(1,'#26A69A');
+      ctx.fillStyle=g;
+      this._rr(ctx,w.x,w.y,w.w,w.h,4); ctx.fill();
+      ctx.strokeStyle='#00796B'; ctx.lineWidth=1.5; ctx.stroke();
+    });
   }
 
-  _drawPlayerCursor(x, y) {
-    const ctx  = this.ctx;
-    const self = this.players.find(p => p.id === this.playerId);
-    ctx.font = '36px serif';
-    ctx.textAlign = 'center';
-    ctx.fillText(self ? ANIMALS_DATA[self.animal]?.emoji || '🐾' : '🐾', x, y + 18);
+  _drawRaceBg() {
+    const ctx=this.ctx;
+    // Líneas de carretera
+    ctx.strokeStyle='rgba(255,255,255,0.15)';
+    ctx.lineWidth=2; ctx.setLineDash([20,15]);
+    [this.W*0.33,this.W*0.66].forEach(x=>{
+      ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,this.H); ctx.stroke();
+    });
+    ctx.setLineDash([]);
+    // Meta
+    ctx.font='20px serif'; ctx.textAlign='center';
+    ctx.fillText('🏁',this.W/2,50);
   }
 
-  _playSound(type) { /* Web Audio API — implementación futura */ }
+  _drawGameObjects(t) {
+    const ctx=this.ctx;
+    if (t==='catch'||t==='collect') {
+      this.objs.forEach(o => {
+        if (o.hit) return;
+        ctx.font=`${o.r*1.6}px serif`; ctx.textAlign='center';
+        ctx.fillText(o.emoji,o.x,o.y+o.r*0.8);
+        // Brillo
+        ctx.strokeStyle='rgba(255,215,0,0.4)'; ctx.lineWidth=2;
+        ctx.beginPath(); ctx.arc(o.x,o.y,o.r,0,Math.PI*2); ctx.stroke();
+      });
+    }
+    if (t==='dodge') {
+      this.objs.forEach(o=>{
+        if(o.hit)return;
+        ctx.font='38px serif'; ctx.textAlign='center';
+        ctx.fillText(o.emoji,o.x,o.y+16);
+        // Aura de peligro
+        ctx.strokeStyle='rgba(231,76,60,0.5)'; ctx.lineWidth=3;
+        ctx.beginPath(); ctx.arc(o.x,o.y,o.r,0,Math.PI*2); ctx.stroke();
+      });
+    }
+    if (t==='tap') {
+      this.objs.forEach(o=>{
+        if(o.popped)return;
+        o.y+=o.vy;
+        if(o.y<60||o.y>this.H-60){o.vy*=-1;}
+        ctx.font='50px serif'; ctx.textAlign='center';
+        ctx.globalAlpha=o.life;
+        ctx.fillText(o.emoji,o.x,o.y+20);
+        ctx.globalAlpha=1;
+        ctx.strokeStyle=o.emoji==='🎈'?'rgba(100,200,255,0.5)':'rgba(255,80,80,0.5)';
+        ctx.lineWidth=2;
+        ctx.beginPath(); ctx.arc(o.x,o.y,o.r,0,Math.PI*2); ctx.stroke();
+      });
+    }
+    if (t==='aim') {
+      this.targets.forEach(tg=>{
+        if(tg.hit)return;
+        // Anillos del blanco
+        [[tg.r,'#E74C3C'],[tg.r*0.66,'#fff'],[tg.r*0.33,'#E74C3C']].forEach(([r,c])=>{
+          ctx.fillStyle=c; ctx.beginPath(); ctx.arc(tg.x,tg.y,r,0,Math.PI*2); ctx.fill();
+        });
+        ctx.strokeStyle='rgba(0,0,0,0.3)'; ctx.lineWidth=1;
+        ctx.beginPath(); ctx.arc(tg.x,tg.y,tg.r,0,Math.PI*2); ctx.stroke();
+      });
+    }
+    if (t==='rhythm') {
+      // Indicador de ritmo
+      const elapsed=Date.now()-this.startTime;
+      const phase=(elapsed%this.nextBeat)/this.nextBeat;
+      const pulse=Math.abs(Math.sin(phase*Math.PI));
+      ctx.fillStyle=`rgba(255,215,0,${0.15+pulse*0.4})`;
+      ctx.beginPath(); ctx.arc(this.W/2,this.H/2,80+pulse*30,0,Math.PI*2); ctx.fill();
+      ctx.font='60px serif'; ctx.textAlign='center';
+      ctx.globalAlpha=0.3+pulse*0.7;
+      ctx.fillText('🎵',this.W/2,this.H/2+20);
+      ctx.globalAlpha=1;
+      ctx.font='bold 18px sans-serif'; ctx.fillStyle='#FFD700';
+      ctx.fillText(`Combo: x${this.combo}`,this.W/2,this.H-60);
+    }
+  }
 
+  _drawScorePanel() {
+    const ctx=this.ctx;
+    // Panel superior izquierdo
+    ctx.fillStyle='rgba(0,0,0,0.65)';
+    this._rr(ctx,8,8,220,64,10); ctx.fill();
+    ctx.strokeStyle='rgba(255,215,0,0.4)'; ctx.lineWidth=1.5; ctx.stroke();
+
+    const me=this.players.find(p=>p.id===this.selfId);
+    if(me){
+      AnimalRenderer.draw(ctx,me.animal,36,40,18);
+      ctx.font='bold 11px sans-serif'; ctx.fillStyle='#FFD700'; ctx.textAlign='left';
+      ctx.fillText(me.username.slice(0,12),58,30);
+      ctx.font='bold 18px sans-serif'; ctx.fillStyle='#fff';
+      ctx.fillText(`⭐ ${Math.floor(this.score)}`,58,50);
+    }
+
+    // Ranking lateral
+    const all=[
+      {id:this.selfId, score:Math.floor(this.score), ...this.players.find(p=>p.id===this.selfId)},
+      ...this.players.filter(p=>p.id!==this.selfId).map(p=>({
+        ...p, score:Math.floor(this.botScores[p.id]||0)
+      }))
+    ].sort((a,b)=>b.score-a.score);
+
+    ctx.fillStyle='rgba(0,0,0,0.6)';
+    this._rr(ctx,this.W-148,8,140,all.length*22+16,10); ctx.fill();
+    ctx.strokeStyle='rgba(255,255,255,0.15)'; ctx.lineWidth=1; ctx.stroke();
+
+    all.forEach((p,i)=>{
+      const isMe=p.id===this.selfId;
+      ctx.font=`${isMe?'bold ':' '}10px sans-serif`;
+      ctx.fillStyle=isMe?'#FFD700':'rgba(255,255,255,0.75)';
+      ctx.textAlign='left';
+      const medal=['🥇','🥈','🥉'][i]||`${i+1}.`;
+      ctx.fillText(`${medal} ${(p.username||'?').slice(0,8)}`,this.W-140,26+i*22);
+      ctx.textAlign='right';
+      ctx.fillStyle=isMe?'#FFD700':'#aaa';
+      ctx.fillText(p.score,this.W-12,26+i*22);
+    });
+  }
+
+  _rr(ctx,x,y,w,h,r){
+    ctx.beginPath();
+    ctx.moveTo(x+r,y); ctx.lineTo(x+w-r,y);
+    ctx.quadraticCurveTo(x+w,y,x+w,y+r);
+    ctx.lineTo(x+w,y+h-r);
+    ctx.quadraticCurveTo(x+w,y+h,x+w-r,y+h);
+    ctx.lineTo(x+r,y+h);
+    ctx.quadraticCurveTo(x,y+h,x,y+h-r);
+    ctx.lineTo(x,y+r);
+    ctx.quadraticCurveTo(x,y,x+r,y);
+    ctx.closePath();
+  }
+
+  // ── FINISH ────────────────────────────────────────────────
   _finish() {
-    // Calcular ranking de resultados
-    const scores = this.players.map(p => ({
-      id: p.id,
-      score: p.id === this.playerId ? Math.floor(this.myScore) : Math.floor(Math.random() * this.myScore * 1.2)
-    })).sort((a, b) => b.score - a.score);
+    const all = [
+      { id:this.selfId, score:Math.floor(this.score) },
+      ...this.players.filter(p=>p.id!==this.selfId).map(p=>({
+        id:p.id, score:Math.floor(this.botScores[p.id]||0)
+      }))
+    ].sort((a,b)=>b.score-a.score);
 
     this.onFinish({
-      winner: scores[0]?.id,
-      second: scores[1]?.id,
-      third:  scores[2]?.id,
-      scores
+      type:'normal',
+      winner: all[0]?.id || null,
+      second: all[1]?.id || null,
+      third:  all[2]?.id || null,
+      scores: all
     });
-  }
-
-  destroy() {
-    this.running = false;
   }
 }
