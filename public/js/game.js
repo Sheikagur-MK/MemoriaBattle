@@ -665,5 +665,6 @@ socket.on('round_ready', data => {
     buySkin, equipSkin,
     showStats,
     setVolume, setLang, setQuality, toggleFullscreen,
+    mgEngine,
   };
 })();
