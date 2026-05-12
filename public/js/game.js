@@ -617,7 +617,7 @@ const G = (() => {
 
     socket.on('disconnect', () => toast('Desconectado del servidor. Reconectando...', 'err'));
     socket.on('connect',    () => { if (user) toast('Reconectado ✓', 'ok'); });
- });
+
 socket.on('round_ready', data => {
   // Accedemos a mgEngine de forma segura a través de G o verificamos si existe
   if (typeof G !== 'undefined' && G.mgEngine) {
