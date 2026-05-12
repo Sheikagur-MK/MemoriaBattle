@@ -7,7 +7,7 @@ class BoardRenderer {
     this.players= {};
     this.camX   = 0; this.camY = 0;
     this.targetCamX = 0; this.targetCamY = 0;
-    this.zoom   = 0.8; // Zoom inicial más cercano para evitar ver todo el tablero
+    this.zoom   = 1;
     this.dragging = false;
     this.dragStart= {x:0,y:0};
     this.animPlayers = {}; // posiciones animadas
@@ -26,157 +26,228 @@ class BoardRenderer {
   }
 
   // ── CONFIGURACIÓN ─────────────────────────────────────────
+  // El tablero se dibuja en espiral: 70 casillas en forma de snake
   CELL_W = 110;
   CELL_H = 90;
   COLS    = 10;
 
   getCellPos(idx) {
     const row = Math.floor(idx / this.COLS);
-    const col = row % 2 === 0 ? idx % this.COLS : (this.COLS - 1) - (idx % this.COLS);
+    const col = row % 2 === 0 ? idx % this.COLS : this.COLS - 1 - (idx % this.COLS);
     return {
       x: col * this.CELL_W + this.CELL_W / 2,
       y: row * this.CELL_H + this.CELL_H / 2
     };
   }
 
-  setBoard(data) { this.board = data; }
-  
-  setPlayers(players) { 
-    this.players = players; 
-    for(let id in players) {
-      if(!this.animPlayers[id]) {
-        this.animPlayers[id] = { ...this.getCellPos(players[id].pos) };
+  get totalW() { return this.COLS * this.CELL_W; }
+  get totalH() { return Math.ceil(70 / this.COLS) * this.CELL_H; }
+
+  // ── COLORES POR TIPO DE CASILLA ───────────────────────────
+  SPACE_COLORS = {
+    blue:     { fill:'#1A5276', stroke:'#4A90E2', emoji:'🔵', label:'+5🍌' },
+    red:      { fill:'#922B21', stroke:'#E74C3C', emoji:'🔴', label:'-2🍌' },
+    star:     { fill:'#7D6608', stroke:'#FFD700', emoji:'⭐', label:'Super 🍌' },
+    supermini:{ fill:'#6C3483', stroke:'#9B59B6', emoji:'💜', label:'¡Super MJ!' },
+    normal:   { fill:'#2C3E50', stroke:'#566573', emoji:'',   label:'' },
+  };
+
+  // ── COLORES POR BIOMA ──────────────────────────────────────
+  BIOME_BG = {
+    fauna:    '#0d2818',
+    desierto: '#2d1800',
+    bosque:   '#0a1f0a',
+    selva:    '#0a2010',
+    artico:   '#0a1a28',
+  };
+
+  BIOME_EMOJI = {
+    fauna:'🌿', desierto:'🏜️', bosque:'🌲', selva:'🌴', artico:'❄️'
+  };
+
+  // ── INIT POSICIONES ANIMADAS ──────────────────────────────
+  initPlayers(players) {
+    this.players = players;
+    Object.values(players).forEach(p => {
+      if (!this.animPlayers[p.id]) {
+        const pos = this.getCellPos(p.position || 0);
+        this.animPlayers[p.id] = { x: pos.x, y: pos.y };
       }
-    }
-  }
-
-  // ── ACTUALIZACIÓN Y CÁMARA ────────────────────────────────
-  update(activePlayerId) {
-    // 1. Seguimiento del jugador activo
-    const activePlayer = this.players[activePlayerId];
-    if (activePlayer && !this.dragging) {
-      const pos = this.getCellPos(activePlayer.pos);
-      // Centrar la cámara en el jugador (ajustando por el zoom)
-      this.targetCamX = (this.W / 2) - (pos.x * this.zoom);
-      this.targetCamY = (this.H / 2) - (pos.y * this.zoom);
-    }
-
-    // 2. Suavizado de cámara (Interpolación)
-    this.camX += (this.targetCamX - this.camX) * 0.08;
-    this.camY += (this.targetCamY - this.camY) * 0.08;
-
-    // 3. Animar jugadores (suavizar su movimiento por las casillas)
-    for(let id in this.players) {
-      const target = this.getCellPos(this.players[id].pos);
-      const cur = this.animPlayers[id];
-      if(!cur) {
-        this.animPlayers[id] = { ...target };
-        continue;
-      }
-      cur.x += (target.x - cur.x) * 0.1;
-      cur.y += (target.y - cur.y) * 0.1;
-
-      // Partículas si se mueve
-      if(Math.abs(target.x - cur.x) > 1) {
-        this.spawnParticle(cur.x, cur.y, this.players[id].animal);
-      }
-    }
-
-    // Partículas
-    this.particles.forEach((p, i) => {
-      p.x += p.vx; p.y += p.vy; p.life -= 0.02;
-      if(p.life <= 0) this.particles.splice(i, 1);
     });
   }
 
-  // ── RENDERIZADO ───────────────────────────────────────────
-  draw() {
+  updatePlayer(playerId, newPos) {
+    if (this.players[playerId]) {
+      this.players[playerId].position = newPos;
+      this._animateMove(playerId, newPos);
+    }
+  }
+
+  _animateMove(playerId, targetPos) {
+    const target = this.getCellPos(targetPos);
+    const anim   = this.animPlayers[playerId];
+    if (!anim) return;
+
+    // Interpolación suave
+    const step = () => {
+      const dx = target.x - anim.x;
+      const dy = target.y - anim.y;
+      if (Math.abs(dx) < 1 && Math.abs(dy) < 1) {
+        anim.x = target.x;
+        anim.y = target.y;
+        this._spawnParticles(target.x, target.y, this.players[playerId]?.color || '#FFD700');
+        return;
+      }
+      anim.x += dx * 0.12;
+      anim.y += dy * 0.12;
+      requestAnimationFrame(step);
+    };
+    step();
+  }
+
+  _spawnParticles(x, y, color) {
+    for (let i = 0; i < 12; i++) {
+      const angle = (Math.PI * 2 / 12) * i;
+      this.particles.push({
+        x, y,
+        vx: Math.cos(angle) * (2 + Math.random() * 3),
+        vy: Math.sin(angle) * (2 + Math.random() * 3),
+        life: 1, color,
+        r: 4 + Math.random() * 4
+      });
+    }
+  }
+
+  // ── CÁMARA: CENTRAR EN JUGADOR ────────────────────────────
+  focusPlayer(playerId) {
+    const anim = this.animPlayers[playerId];
+    if (!anim) return;
+    this.targetCamX = this.W / 2 - anim.x;
+    this.targetCamY = this.H / 2 - anim.y;
+  }
+
+  // ── INPUT DRAG ────────────────────────────────────────────
+  _initInput() {
+    this.canvas.addEventListener('mousedown',  e => { this.dragging = true; this.dragStart = {x:e.clientX - this.camX, y:e.clientY - this.camY}; });
+    this.canvas.addEventListener('mouseup',    () => this.dragging = false);
+    this.canvas.addEventListener('mousemove',  e => { if (this.dragging) { this.camX = e.clientX - this.dragStart.x; this.camY = e.clientY - this.dragStart.y; }});
+    this.canvas.addEventListener('wheel',      e => { this.zoom = Math.max(0.5, Math.min(2, this.zoom - e.deltaY * 0.001)); });
+    this.canvas.addEventListener('touchstart', e => { const t = e.touches[0]; this.dragging = true; this.dragStart = {x:t.clientX - this.camX, y:t.clientY - this.camY}; }, {passive:true});
+    this.canvas.addEventListener('touchend',   () => this.dragging = false);
+    this.canvas.addEventListener('touchmove',  e => { if (this.dragging) { const t = e.touches[0]; this.camX = t.clientX - this.dragStart.x; this.camY = t.clientY - this.dragStart.y; }}, {passive:true});
+  }
+
+  // ── LOOP DE RENDER ─────────────────────────────────────────
+  startRender() {
+    this._renderLoop();
+  }
+
+  _renderLoop() {
+    // Suavizar cámara
+    if (!this.dragging) {
+      this.camX += (this.targetCamX - this.camX) * 0.08;
+      this.camY += (this.targetCamY - this.camY) * 0.08;
+    }
+
+    this._draw();
+    requestAnimationFrame(() => this._renderLoop());
+  }
+
+  _draw() {
     const ctx = this.ctx;
     ctx.clearRect(0, 0, this.W, this.H);
 
+    // Fondo global
+    ctx.fillStyle = '#0a0a1a';
+    ctx.fillRect(0, 0, this.W, this.H);
+
     ctx.save();
-    // Aplicar transformación de cámara y zoom
     ctx.translate(this.camX, this.camY);
     ctx.scale(this.zoom, this.zoom);
 
-    this.drawBoard(ctx);
-    this.drawParticles(ctx);
-    this.drawPlayers(ctx);
+    // ── BIOMAS (fondo por sección) ─────────────────────────
+    const biomes = ['fauna','desierto','bosque','selva','artico'];
+    biomes.forEach((biome, bi) => {
+      const startRow = bi * 2; // 2 filas por bioma (10 cols × 2 = 20 casillas / bioma para 100, o 14/bioma para 70)
+      const y0 = Math.floor((bi * 14) / this.COLS) * this.CELL_H;
+      const rows = Math.ceil(14 / this.COLS);
+      ctx.fillStyle = this.BIOME_BG[biome] + 'cc';
+      ctx.fillRect(-10, y0 - 10, this.totalW + 20, rows * this.CELL_H + 20);
+
+      // Label de bioma
+      ctx.font = 'bold 13px sans-serif';
+      ctx.fillStyle = 'rgba(255,255,255,0.25)';
+      ctx.textAlign = 'left';
+      ctx.fillText(`${this.BIOME_EMOJI[biome]} ${biome.toUpperCase()}`, 6, y0 + 16);
+    });
+
+    // ── CONEXIONES ENTRE CASILLAS ──────────────────────────
+    ctx.strokeStyle = 'rgba(255,255,255,0.12)';
+    ctx.lineWidth   = 3;
+    ctx.setLineDash([6, 4]);
+    for (let i = 0; i < this.board.length - 1; i++) {
+      const a = this.getCellPos(i);
+      const b = this.getCellPos(i + 1);
+      ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
+    }
+    ctx.setLineDash([]);
+
+    // ── CASILLAS ──────────────────────────────────────────
+    this.board.forEach((space, i) => {
+      this._drawSpace(space, i);
+    });
+
+    // ── PARTÍCULAS ────────────────────────────────────────
+    this.particles = this.particles.filter(p => p.life > 0);
+    this.particles.forEach(p => {
+      ctx.globalAlpha = p.life;
+      ctx.fillStyle   = p.color;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.r * p.life, 0, Math.PI * 2);
+      ctx.fill();
+      p.x += p.vx; p.y += p.vy;
+      p.vy += 0.1; // gravity
+      p.life -= 0.04;
+    });
+    ctx.globalAlpha = 1;
+
+    // ── PIEZAS DE JUGADORES ──────────────────────────────
+    Object.values(this.players).forEach((p, i) => {
+      if (p.disconnected) return;
+      const anim   = this.animPlayers[p.id];
+      if (!anim) return;
+      const animal = ANIMALS_DATA[p.animal];
+      const offset = { x: (i % 4 - 1.5) * 14, y: Math.floor(i / 4) * 14 - 8 };
+
+      // Sombra
+      ctx.fillStyle = 'rgba(0,0,0,0.4)';
+      ctx.beginPath();
+      ctx.ellipse(anim.x + offset.x, anim.y + offset.y + 22, 14, 6, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Emoji animal
+      ctx.font = '30px serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(animal?.emoji || '🐾', anim.x + offset.x, anim.y + offset.y + 8);
+
+      // Nombre
+      ctx.font = 'bold 9px sans-serif';
+      ctx.fillStyle = p.color || '#fff';
+      ctx.fillText(p.username.slice(0,8), anim.x + offset.x, anim.y + offset.y + 22);
+
+      // Bananas
+      ctx.font = '9px sans-serif';
+      ctx.fillStyle = '#FFD700';
+      ctx.fillText(`🍌${p.bananas}`, anim.x + offset.x, anim.y + offset.y + 32);
+    });
 
     ctx.restore();
   }
 
-  drawBoard(ctx) {
-    this.board.forEach((space, i) => {
-      const pos = this.getCellPos(i);
-      this._drawSpace(ctx, pos, space, i);
-    });
-  }
-
-  drawPlayers(ctx) {
-    for(let id in this.players) {
-      const p   = this.players[id];
-      const pos = this.animPlayers[id];
-      if(!pos) continue;
-
-      ctx.save();
-      ctx.translate(pos.x, pos.y);
-
-      // Sombra del personaje
-      ctx.shadowColor = 'rgba(0,0,0,0.3)';
-      ctx.shadowBlur  = 10;
-      
-      // Cuerpo (Círculo de fondo)
-      ctx.fillStyle = ANIMALS_DATA[p.animal]?.color || '#ccc';
-      ctx.beginPath();
-      ctx.arc(0, 0, 22, 0, Math.PI*2);
-      ctx.fill();
-      ctx.strokeStyle = '#fff';
-      ctx.lineWidth = 2;
-      ctx.stroke();
-
-      // Emoji
-      ctx.shadowBlur = 0;
-      ctx.font = '24px serif';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText(ANIMALS_DATA[p.animal]?.emoji || '❓', 0, 2);
-
-      // Nombre arriba
-      ctx.font = 'bold 12px sans-serif';
-      ctx.fillStyle = '#fff';
-      ctx.strokeStyle = '#000';
-      ctx.lineWidth = 3;
-      ctx.strokeText(p.username, 0, -32);
-      ctx.fillText(p.username, 0, -32);
-
-      ctx.restore();
-    }
-  }
-
-  drawParticles(ctx) {
-    this.particles.forEach(p => {
-      ctx.globalAlpha = p.life;
-      ctx.font = '12px serif';
-      ctx.fillText(p.char, p.x, p.y);
-    });
-    ctx.globalAlpha = 1;
-  }
-
-  spawnParticle(x, y, animal) {
-    if(Math.random() > 0.3) return;
-    this.particles.push({
-      x, y, 
-      vx: (Math.random()-0.5)*2, 
-      vy: (Math.random()-0.5)*2,
-      life: 1,
-      char: ANIMALS_DATA[animal]?.emoji || '✨'
-    });
-  }
-
-  // ── HELPERS ───────────────────────────────────────────────
-  _drawSpace(ctx, pos, space, i) {
-    const cfg  = SPACE_CONFIG[space.type] || this.SPACE_COLORS.normal;
+  _drawSpace(space, i) {
+    const ctx  = this.ctx;
+    const pos  = this.getCellPos(i);
+    const cfg  = this.SPACE_COLORS[space.type] || this.SPACE_COLORS.normal;
     const W    = this.CELL_W - 12;
     const H    = this.CELL_H - 12;
 
@@ -214,61 +285,23 @@ class BoardRenderer {
       ctx.font      = 'bold 9px sans-serif';
       ctx.fillStyle = '#fff';
       ctx.textAlign = 'center';
-      ctx.fillText(cfg.label, 0, H/2 - 8);
+      ctx.fillText(cfg.label, 0, H/2 - 6);
     }
 
     ctx.restore();
   }
 
   _roundRect(ctx, x, y, w, h, r) {
-    if (w < 2 * r) r = w / 2;
-    if (h < 2 * r) r = h / 2;
     ctx.beginPath();
     ctx.moveTo(x + r, y);
-    ctx.arcTo(x + w, y, x + w, y + h, r);
-    ctx.arcTo(x + w, y + h, x, y + h, r);
-    ctx.arcTo(x, y + h, x, y, r);
-    ctx.arcTo(x, y, x + w, y, r);
+    ctx.lineTo(x + w - r, y);
+    ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+    ctx.lineTo(x + w, y + h - r);
+    ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+    ctx.lineTo(x + r, y + h);
+    ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+    ctx.lineTo(x, y + r);
+    ctx.quadraticCurveTo(x, y, x + r, y);
     ctx.closePath();
   }
-
-  SPACE_COLORS = {
-    normal: { fill: '#555', stroke: '#777' }
-  };
-
-  _initInput() {
-    this.canvas.addEventListener('mousedown', e => {
-      this.dragging = true;
-      this.dragStart = { x: e.clientX - this.camX, y: e.clientY - this.camY };
-    });
-    window.addEventListener('mousemove', e => {
-      if(!this.dragging) return;
-      this.targetCamX = e.clientX - this.dragStart.x;
-      this.targetCamY = e.clientY - this.dragStart.y;
-    });
-    window.addEventListener('mouseup', () => this.dragging = false);
-
-    // Touch
-    this.canvas.addEventListener('touchstart', e => {
-      this.dragging = true;
-      const t = e.touches[0];
-      this.dragStart = { x: t.clientX - this.camX, y: t.clientY - this.camY };
-    });
-    window.addEventListener('touchmove', e => {
-      if(!this.dragging) return;
-      const t = e.touches[0];
-      this.targetCamX = t.clientX - this.dragStart.x;
-      this.targetCamY = t.clientY - this.dragStart.y;
-    });
-    window.addEventListener('touchend', () => this.dragging = false);
-  }
 }
-
-const SPACE_CONFIG = {
-  normal: { fill: 'rgba(255,255,255,0.1)', stroke: 'rgba(255,255,255,0.2)' },
-  blue:   { fill: '#2980b9', stroke: '#3498db', emoji: '🔹', label: '+3' },
-  red:    { fill: '#c0392b', stroke: '#e74c3c', emoji: '🔸', label: '-3' },
-  star:   { fill: '#f1c40f', stroke: '#f39c12', emoji: '⭐', label: 'STAR' },
-  banana: { fill: '#27ae60', stroke: '#2ecc71', emoji: '🍌', label: 'BONUS' },
-  event:  { fill: '#8e44ad', stroke: '#9b59b6', emoji: '❓', label: 'EVENT' }
-};
