@@ -1,4 +1,4 @@
-// ── RENDERIZADOR DEL TABLERO MEJORADO ─────────────────────────────────────────
+// ── RENDERIZADOR DEL TABLERO PROFESIONAL ──────────────────────────────────────
 class BoardRenderer {
   constructor(canvasId) {
     this.canvas = document.getElementById(canvasId);
@@ -7,133 +7,163 @@ class BoardRenderer {
     this.players= {};
     this.selfId = null;
 
-    // Cámara con suavizado dinámico
-    this.camX = 0; this.camY = 0;
-    this.targetCamX = 0; this.targetCamY = 0;
-    this.zoom = 1.3;
+    // Configuración de Cámara y Zoom
+    this.camX = 0; 
+    this.camY = 0;
+    this.targetCamX = 0; 
+    this.targetCamY = 0;
+    this.zoom = 1.2;
 
-    // Sistema de Partículas para mayor emoción
-    this.particles = [];
-    this.anim = {}; 
+    // Animación de Personajes
+    this.anim = {}; // Guardará { x, y, targetX, targetY, bob }
     this.frame = 0;
 
-    this._resize();
-    this._initInput();
-    window.addEventListener('resize', () => this._resize());
+    this._init();
   }
 
-  _resize() {
+  _init() {
+    this.resize();
+    window.addEventListener('resize', () => this.resize());
+    this.animate();
+  }
+
+  resize() {
     this.canvas.width = window.innerWidth;
     this.canvas.height = window.innerHeight;
+    this.W = this.canvas.width;
+    this.H = this.canvas.height;
   }
 
-  // Explosión visual al caer en casillas especiales o ganar premios
-  spawnBurst(x, y, color) {
-    for(let i=0; i<15; i++) {
-      this.particles.push({
-        x, y, 
-        vx: (Math.random()-0.5)*12, 
-        vy: (Math.random()-0.5)*12, 
-        life: 1.0, 
-        c: color
-      });
-    }
-  }
+  // Define el tamaño de cada casilla y columnas del tablero
+  CW = 110; 
+  CH = 90;
+  COLS = 8;
 
+  // Convierte el índice de casilla (0-69) a coordenadas X, Y en el mundo
   _cellPos(idx) {
-    const COLS = 10;
-    const CW = 100;
-    const CH = 86;
-    const row = Math.floor(idx / COLS);
-    const col = row % 2 === 0 ? idx % COLS : COLS - 1 - (idx % COLS);
-    return { x: col * CW + CW/2, y: row * CH + CH/2 };
+    const row = Math.floor(idx / this.COLS);
+    const isEven = row % 2 === 0;
+    const col = isEven ? (idx % this.COLS) : (this.COLS - 1 - (idx % this.COLS));
+    return {
+      x: col * this.CW,
+      y: row * this.CH
+    };
   }
 
-  render(state, selfId) {
-    this.board = state.board;
-    this.players = state.players;
-    this.selfId = selfId;
-    const ctx = this.ctx;
+  init(boardData, playersData, myId) {
+    this.board = boardData;
+    this.players = playersData;
+    this.selfId = myId;
 
-    ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+    // Inicializar posiciones de animación
+    Object.keys(playersData).forEach(id => {
+      const pos = this._cellPos(playersData[id].pos);
+      this.anim[id] = { x: pos.x, y: pos.y, targetX: pos.x, targetY: pos.y };
+    });
+  }
 
-    // Seguimiento de cámara inteligente
-    const activeP = this.players[state.currentTurnId || selfId];
-    if (activeP) {
-      const pos = this._cellPos(activeP.position);
-      this.targetCamX = pos.x * this.zoom - this.canvas.width/2;
-      this.targetCamY = pos.y * this.zoom - this.canvas.height/2;
+  movePlayer(id, newPosIdx) {
+    const pos = this._cellPos(newPosIdx);
+    if (this.anim[id]) {
+      this.anim[id].targetX = pos.x;
+      this.anim[id].targetY = pos.y;
     }
+    // Centrar cámara en el jugador que se mueve
+    if (id === this.selfId) {
+      this.targetCamX = pos.x;
+      this.targetCamY = pos.y;
+    }
+  }
 
-    this.camX += (this.targetCamX - this.camX) * 0.08;
-    this.camY += (this.targetCamY - this.camY) * 0.08;
+  draw() {
+    const ctx = this.ctx;
+    ctx.clearRect(0, 0, this.W, this.H);
 
     ctx.save();
-    ctx.translate(-this.camX, -this.camY);
+    // Aplicar Cámara y Zoom
+    ctx.translate(this.W / 2, this.H / 2);
     ctx.scale(this.zoom, this.zoom);
+    ctx.translate(-this.camX, -this.camY);
 
-    // Renderizado de Casillas con resplandor
-    this.board.forEach((cell, i) => {
+    // 1. Dibujar Caminos (Líneas entre casillas)
+    ctx.strokeStyle = "rgba(255,255,255,0.1)";
+    ctx.lineWidth = 5;
+    ctx.beginPath();
+    for (let i = 0; i < this.board.length - 1; i++) {
+      const p1 = this._cellPos(i);
+      const p2 = this._cellPos(i + 1);
+      ctx.moveTo(p1.x, p1.y);
+      ctx.lineTo(p2.x, p2.y);
+    }
+    ctx.stroke();
+
+    // 2. Dibujar Casillas
+    this.board.forEach((tile, i) => {
       const pos = this._cellPos(i);
-      this._drawCell(pos.x, pos.y, cell);
+      this._drawTile(ctx, pos.x, pos.y, tile);
     });
 
-    // Renderizado de Jugadores con animación de salto
+    // 3. Dibujar Jugadores con Interpolación
     Object.keys(this.players).forEach(id => {
       const p = this.players[id];
-      const pos = this._cellPos(p.position);
-      this._drawPlayer(pos.x, pos.y, p);
+      const a = this.anim[id];
+
+      // Suavizado de movimiento (Lerp)
+      a.x += (a.targetX - a.x) * 0.1;
+      a.y += (a.targetY - a.y) * 0.1;
+
+      const bob = Math.sin(this.frame * 0.1) * 5;
+      this._drawPlayer(ctx, a.x, a.y + bob, p);
     });
 
-    this._updateParticles();
     ctx.restore();
-    this.frame++;
+    
+    // Suavizado de cámara
+    this.camX += (this.targetCamX - this.camX) * 0.05;
+    this.camY += (this.targetCamY - this.camY) * 0.05;
   }
 
-  _drawCell(x, y, cell) {
-    const ctx = this.ctx;
-    const colors = { blue: '#4A90E2', red: '#E74C3C', star: '#FFD700', super: '#9B59B6' };
-    const color = colors[cell.type] || '#555';
-    
-    ctx.shadowBlur = 15;
-    ctx.shadowColor = color;
-    ctx.fillStyle = color;
+  _drawTile(ctx, x, y, tile) {
+    const colors = {
+      normal: '#555',
+      coins: '#FFD700',
+      danger: '#E74C3C',
+      star: '#9B59B6',
+      minigame: '#4ECDC4'
+    };
+
+    ctx.fillStyle = colors[tile.type] || '#555';
     ctx.beginPath();
-    ctx.arc(x, y, 30 + Math.sin(this.frame*0.05)*2, 0, Math.PI*2);
+    ctx.arc(x, y, 30, 0, Math.PI * 2);
     ctx.fill();
-    ctx.shadowBlur = 0;
-
-    ctx.fillStyle = 'white';
-    ctx.font = '20px Arial';
-    ctx.textAlign = 'center';
-    const icon = cell.type === 'star' ? '⭐' : (cell.type === 'red' ? '💀' : '🌴');
-    ctx.fillText(icon, x, y + 7);
+    ctx.strokeStyle = "white";
+    ctx.lineWidth = 2;
+    ctx.stroke();
   }
 
-  _drawPlayer(x, y, p) {
-    const ctx = this.ctx;
-    const jump = Math.abs(Math.sin(this.frame * 0.12)) * 12;
-    ctx.font = '42px serif';
-    ctx.textAlign = 'center';
-    ctx.fillText(p.animalEmoji || '🦊', x, y - jump);
+  _drawPlayer(ctx, x, y, p) {
+    const animal = ANIMALS_DATA[p.skin] || ANIMALS_DATA['leon'];
     
-    ctx.font = 'bold 12px sans-serif';
-    ctx.fillStyle = 'white';
-    ctx.fillText(p.username, x, y - 48 - jump);
+    // Sombra
+    ctx.fillStyle = "rgba(0,0,0,0.2)";
+    ctx.beginPath();
+    ctx.ellipse(x, y + 25, 20, 8, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Emoji/Sprite
+    ctx.font = "40px serif";
+    ctx.textAlign = "center";
+    ctx.fillText(animal.emoji, x, y + 10);
+
+    // Nombre
+    ctx.font = "bold 12px Arial";
+    ctx.fillStyle = "white";
+    ctx.fillText(p.username, x, y - 35);
   }
 
-  _updateParticles() {
-    this.particles.forEach((p, i) => {
-      p.x += p.vx; p.y += p.vy; p.life -= 0.025;
-      this.ctx.globalAlpha = p.life;
-      this.ctx.fillStyle = p.c;
-      this.ctx.fillRect(p.x, p.y, 4, 4);
-      if(p.life <= 0) this.particles.splice(i, 1);
-    });
-    this.ctx.globalAlpha = 1;
-  }
-
-  _initInput() {
-    // Mantener lógica de drag manual si el usuario lo desea
+  animate() {
+    this.frame++;
+    this.draw();
+    requestAnimationFrame(() => this.animate());
   }
 }
