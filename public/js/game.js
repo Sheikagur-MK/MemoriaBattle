@@ -1,612 +1,664 @@
 // ── CONTROLADOR PRINCIPAL ─────────────────────────────────────────────────────
+// IMPORTANTE: Este archivo carga DESPUÉS de animals.js, board.js y minigames.js
 const G = (() => {
-  let socket, user, currentLobby, currentGame, gameState;
-  let boardRender, mgEngine, csTimer, queueInterval;
+  let socket, user, lobbyId, gameId, gs;
+  let board, mgEng;
   let myAnimal = null, isMyTurn = false;
+  let csTimer = null, qDots = null;
+
+  // ── HELPERS SEGUROS ────────────────────────────────────────
+  // Nunca lanza error si el elemento no existe
+  const $  = id => document.getElementById(id);
+  const set = (id, v) => { const e = $(id); if (e) e.textContent = v; };
+  const sty = (id, prop, val) => { const e = $(id); if (e) e.style[prop] = val; };
 
   // ── AUDIO ─────────────────────────────────────────────────
   const SFX = {
-    ctx:null, v:0.5,
-    init(){ try{ this.ctx=new(window.AudioContext||window.webkitAudioContext)(); }catch(e){} },
-    play(f,d=0.1,t='sine'){
-      if(!this.ctx)return;
-      try{
-        const o=this.ctx.createOscillator(),g=this.ctx.createGain();
+    ctx: null, v: 0.5,
+    init() { try { this.ctx = new (window.AudioContext || window.webkitAudioContext)(); } catch(e){} },
+    p(f, d=.1, t='sine') {
+      if (!this.ctx) return;
+      try {
+        const o = this.ctx.createOscillator(), g = this.ctx.createGain();
         o.connect(g); g.connect(this.ctx.destination);
-        o.frequency.value=f; o.type=t;
-        g.gain.setValueAtTime(this.v*0.4,this.ctx.currentTime);
-        g.gain.exponentialRampToValueAtTime(0.001,this.ctx.currentTime+d);
-        o.start(); o.stop(this.ctx.currentTime+d);
-      }catch(e){}
+        o.frequency.value = f; o.type = t;
+        g.gain.setValueAtTime(this.v * .35, this.ctx.currentTime);
+        g.gain.exponentialRampToValueAtTime(.001, this.ctx.currentTime + d);
+        o.start(); o.stop(this.ctx.currentTime + d);
+      } catch(e) {}
     },
-    pop() { this.play(880,0.08); },
-    coin(){ this.play(1046,0.07); setTimeout(()=>this.play(1318,0.1),80); },
-    dice(){ [220,330,440,550].forEach((f,i)=>setTimeout(()=>this.play(f,0.05,'square'),i*40)); },
-    win() { [523,659,784,1046].forEach((f,i)=>setTimeout(()=>this.play(f,0.15),i*120)); },
-    lose(){ this.play(196,0.4,'sawtooth'); },
+    pop()  { this.p(880, .08); },
+    coin() { this.p(1046, .07); setTimeout(() => this.p(1318, .1), 80); },
+    dice() { [220,330,440,550].forEach((f,i) => setTimeout(() => this.p(f,.05,'square'), i*40)); },
+    win()  { [523,659,784,1046].forEach((f,i) => setTimeout(() => this.p(f,.15), i*120)); },
+    lose() { this.p(196, .4, 'sawtooth'); },
+    move() { this.p(660, .06); },
   };
 
   // ── TOAST ─────────────────────────────────────────────────
-  function toast(msg, type=''){
-    const c=document.getElementById('toast');
-    const d=document.createElement('div');
-    d.className=`toast-msg ${type}`; d.textContent=msg;
-    c.appendChild(d); setTimeout(()=>d.remove(),3200);
+  function T(msg, type='') {
+    const c = $('toast'); if (!c) return;
+    const d = document.createElement('div');
+    d.className = `tm ${type}`; d.textContent = msg;
+    c.appendChild(d); setTimeout(() => d.remove(), 3200);
   }
 
   // ── PANTALLAS ─────────────────────────────────────────────
-  function showScreen(id){
-    document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
-    ['dice-overlay','mg-overlay','mg-game-screen','result-overlay'].forEach(oid=>{
-      const el=document.getElementById(oid);
-      if(el){el.classList.remove('active');el.style.display='';}
-    });
-    if(id){ const t=document.getElementById(id); if(t) t.classList.add('active'); }
+  // Oculta todas las .screen y muestra la pedida
+  // Para screen-game no usa class.active sino visibilidad directa del canvas
+  function show(id) {
+    document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+
+    // Ocultar elementos de juego que flotan sobre el DOM
+    sty('board-canvas', 'display', 'none');
+    const mgi = $('mg-intro');   if (mgi) mgi.classList.remove('hidden');
+    const mgr = $('mg-result');  if (mgr) mgr.classList.remove('show');
+
+    const t = $(id);
+    if (t) t.classList.add('active');
+
+    // Si pedimos la pantalla de juego, mostrar canvas
+    if (id === 'screen-game') sty('board-canvas', 'display', 'block');
   }
 
-  function showAuth(){ showScreen('screen-auth'); }
-  function switchTab(tab){
-    document.querySelectorAll('.auth-tab').forEach((b,i)=>
-      b.classList.toggle('active',(i===0)===(tab==='login')));
-    document.getElementById('auth-login').style.display    = tab==='login'?'':'none';
-    document.getElementById('auth-register').style.display = tab==='register'?'':'none';
+  function showAuth() { show('screen-auth'); }
+
+  function tab(t) {
+    document.querySelectorAll('.atab').forEach((b,i) =>
+      b.classList.toggle('active', (i===0) === (t==='login')));
+    sty('al', 'display', t==='login' ? '' : 'none');
+    sty('ar', 'display', t==='register' ? '' : 'none');
   }
 
   // ── AUTH ──────────────────────────────────────────────────
-  function doLogin(){
-    const u=document.getElementById('a-user').value.trim();
-    const p=document.getElementById('a-pass').value.trim();
-    if(!u||!p) return toast('Completa todos los campos.','err');
-    socket.emit('login',{username:u,password:p});
+  function login() {
+    const u = $('au')?.value.trim();
+    const p = $('ap')?.value.trim();
+    if (!u || !p) return T('Completa todos los campos.', 'err');
+    socket.emit('login', { username: u, password: p });
   }
-  function doRegister(){
-    const u=document.getElementById('r-user').value.trim();
-    const p=document.getElementById('r-pass').value.trim();
-    const p2=document.getElementById('r-pass2').value.trim();
-    if(!u||!p) return toast('Completa los campos.','err');
-    if(p.length<6) return toast('Mínimo 6 caracteres.','err');
-    if(p!==p2) return toast('Las contraseñas no coinciden.','err');
-    socket.emit('register',{username:u,password:p});
-  }
-  function logout(){ user=null; showScreen('screen-intro'); toast('¡Hasta pronto! 👋'); }
 
-  // ── LOBBY UI ──────────────────────────────────────────────
-  function refreshLobby(){
-    if(!user)return;
-    document.getElementById('u-name').textContent      = user.username;
-    document.getElementById('u-stats').textContent     = `Victorias: ${user.wins} · Partidas: ${user.gamesPlayed}`;
-    document.getElementById('u-palmeras').textContent  = user.palmeras;
-    document.getElementById('stat-wins').textContent   = user.wins;
-    document.getElementById('stat-games').textContent  = user.gamesPlayed;
-    document.getElementById('shop-palmeras').textContent=user.palmeras+' 🌴';
-    const a=ANIMALS_DATA[myAnimal||'leon']||{};
-    document.getElementById('user-avatar').textContent      = a.emoji||'🐾';
-    document.getElementById('lobby-animal').textContent     = a.emoji||'🐾';
-    document.getElementById('lobby-animal-name').textContent= a.name||'Sin elegir';
-    document.getElementById('lobby-skin-name').textContent  = `Skin: ${user.activeSkin||'Default'}`;
+  function register() {
+    const u  = $('ru')?.value.trim();
+    const p  = $('rp')?.value.trim();
+    const p2 = $('rp2')?.value.trim();
+    if (!u || !p) return T('Completa los campos.', 'err');
+    if (p.length < 6) return T('Mínimo 6 caracteres.', 'err');
+    if (p !== p2) return T('Las contraseñas no coinciden.', 'err');
+    socket.emit('register', { username: u, password: p });
+  }
+
+  function logout() { user = null; show('screen-intro'); T('¡Hasta pronto! 👋'); }
+
+  // ── LOBBY ─────────────────────────────────────────────────
+  function refreshLobby() {
+    if (!user) return;
+    set('uname',  user.username);
+    set('ustats', `Victorias: ${user.wins} · Partidas: ${user.gamesPlayed}`);
+    set('upal',   user.palmeras);
+    set('sw',     user.wins);
+    set('sg',     user.gamesPlayed);
+    set('shpal',  user.palmeras + ' 🌴');
+    const a = (typeof ANIMALS_DATA !== 'undefined' ? ANIMALS_DATA : {})[myAnimal || 'leon'] || {};
+    set('uavatar',   a.emoji || '🐾');
+    set('lob-animal', a.emoji || '🐾');
+    set('lob-aname',  a.name  || 'Sin elegir');
+    set('lob-skin',   `Skin: ${user.activeSkin || 'Default'}`);
   }
 
   // ── COLA ──────────────────────────────────────────────────
-  function joinQueue(){
-    if(!user) return toast('Inicia sesión primero.','err');
+  function queue() {
+    if (!user) return T('Inicia sesión primero.', 'err');
     socket.emit('join_queue');
-    showScreen('screen-queue');
-    let d=0;
-    queueInterval=setInterval(()=>{
-      document.querySelectorAll('.dot').forEach((el,i)=>el.classList.toggle('active',i===d));
-      d=(d+1)%8;
-    },400);
-    toast('Buscando partida… 🔍');
-  }
-  function leaveQueue(){
-    socket.emit('leave_queue');
-    clearInterval(queueInterval);
-    showScreen('screen-lobby');
-    toast('Búsqueda cancelada.');
+    show('screen-queue');
+    let di = 0;
+    qDots = setInterval(() => {
+      for (let i=0; i<8; i++) { const d=$(`d${i}`); if(d) d.classList.toggle('on', i===di); }
+      di = (di+1) % 8;
+    }, 400);
+    T('Buscando partida… 🔍');
   }
 
-  // ── SELECCIÓN DE PERSONAJE ────────────────────────────────
-  function renderCharSel(players){
-    const grid=document.getElementById('animals-grid');
-    if(!grid)return;
-    const taken=players.filter(p=>p.id!==socket.id).map(p=>p.animal).filter(Boolean);
-    const mine =players.find(p=>p.id===socket.id)?.animal;
-    grid.innerHTML=Object.entries(ANIMALS_DATA).map(([key,a])=>{
-      const tk=taken.includes(key), sel=mine===key;
-      return `<div class="animal-card ${tk?'taken':''} ${sel?'selected':''}"
-        onclick="G.selectAnimal('${key}')">
-        <div class="animal-emoji">${a.emoji}</div>
-        <div class="animal-name">${a.name}</div>
-        ${tk?'<div style="font-size:.7rem;color:#E74C3C">Tomado</div>':''}
-        ${sel?'<div style="font-size:.7rem;color:#00ff88">✓ Elegido</div>':''}
+  function leaveQ() {
+    socket.emit('leave_queue');
+    clearInterval(qDots);
+    show('screen-lobby');
+    T('Búsqueda cancelada.');
+  }
+
+  // ── CHARSEL ───────────────────────────────────────────────
+  function renderCS(players) {
+    const g = $('angrid'); if (!g) return;
+    const taken = players.filter(p => p.id !== socket.id).map(p => p.animal).filter(Boolean);
+    const mine  = players.find(p => p.id === socket.id)?.animal;
+    const AD    = typeof ANIMALS_DATA !== 'undefined' ? ANIMALS_DATA : {};
+
+    g.innerHTML = Object.entries(AD).map(([k, a]) => {
+      const tk = taken.includes(k), sel = mine === k;
+      return `<div class="ancard ${tk?'taken':''} ${sel?'sel':''}" onclick="G.pickAnimal('${k}')">
+        <div class="anem">${a.emoji}</div>
+        <div class="anname">${a.name}</div>
+        ${tk  ? '<div style="font-size:.68rem;color:#E74C3C">Tomado</div>' : ''}
+        ${sel ? '<div style="font-size:.68rem;color:#00ff88">✓</div>' : ''}
       </div>`;
     }).join('');
-    const el=document.getElementById('cs-players');
-    if(el) el.textContent=`${players.filter(p=>p.ready).length}/${players.length} listos`;
+
+    const csp = $('csp');
+    if (csp) csp.textContent = `${players.filter(p=>p.ready).length}/${players.length} listos`;
   }
 
-  function selectAnimal(key){
-    if(!currentLobby)return;
-    socket.emit('select_animal',{lobbyId:currentLobby,animal:key});
-    myAnimal=key; SFX.coin();
+  function pickAnimal(k) {
+    if (!lobbyId) return;
+    socket.emit('select_animal', { lobbyId, animal: k });
+    myAnimal = k; SFX.coin();
   }
 
-  // ── INICIO PARTIDA ────────────────────────────────────────
-  function initGame(data){
-    currentGame = data.gameId;
-    gameState   = data;
+  // ── INICIO DE PARTIDA ─────────────────────────────────────
+  function startGame(data) {
+    gameId = data.gameId;
+    gs     = data;
 
-    document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
-    document.getElementById('game-canvas').style.display    = 'block';
-    document.getElementById('screen-game-ui').style.display = 'block';
+    // Mostrar pantalla del juego (activa el canvas)
+    show('screen-game');
 
-    boardRender = new BoardRenderer('game-canvas');
-    boardRender.board = data.board;
-    boardRender.initPlayers(data.players, socket.id);
-    boardRender.focusTurn(data.currentTurn);
-    boardRender.startRender();
+    // Configurar canvas del tablero
+    const cv = $('board-canvas');
+    if (!cv) { console.error('board-canvas no encontrado'); return; }
+    cv.style.cssText = 'display:block;position:absolute;inset:0;width:100%;height:100%';
+
+    // Crear el renderizador (BoardRenderer está en board.js)
+    if (typeof BoardRenderer === 'undefined') {
+      console.error('BoardRenderer no definido — verifica que board.js cargó antes que game.js');
+      return;
+    }
+    board = new BoardRenderer('board-canvas');
+    board.board = data.board;
+    board.init(data.players, socket.id);
+    board.focusTurn(data.currentTurn);
+    board.start();
 
     updateHUD(data);
-    toast(`¡Partida iniciada! ${Object.keys(data.players).length} jugadores 🎲`,'ok');
+    T(`¡Partida iniciada! ${Object.keys(data.players).length} jugadores 🎲`, 'ok');
   }
 
-  function updateHUD(data){
-    const r = data.round    || gameState?.round    || 1;
-    const m = data.maxRounds|| gameState?.maxRounds|| 10;
-    const el= document.getElementById('hud-round');
-    if(el) el.textContent=`Ronda ${r}/${m}`;
+  // ── HUD ───────────────────────────────────────────────────
+  function updateHUD(data) {
+    const r = data.round      || gs?.round      || 1;
+    const m = data.maxRounds  || gs?.maxRounds  || 10;
+    const re = $('hud-round');
+    if (re) re.textContent = `Ronda ${r}/${m}`;
 
-    const bar=document.getElementById('hud-bar');
-    if(!bar)return;
-    const players=data.players||gameState?.players||{};
-    const order  =data.turnOrder||gameState?.turnOrder||Object.keys(players);
-    const ct     =data.currentTurn||gameState?.currentTurn;
+    const top     = $('hud-top');   if (!top) return;
+    const players = data.players    || gs?.players || {};
+    const order   = data.order      || gs?.order   || Object.keys(players);
+    const ct      = data.currentTurn|| gs?.currentTurn;
+    const AD      = typeof ANIMALS_DATA !== 'undefined' ? ANIMALS_DATA : {};
 
-    let html=`<div class="hud-round">Ronda ${r}/${m}</div>`;
-    order.forEach(pid=>{
-      const p=players[pid]; if(!p||p.disconnected)return;
-      const a=ANIMALS_DATA[p.animal]||{};
-      const isTurn=pid===ct, isSelf=pid===socket.id;
-      html+=`<div class="hud-player" style="border-left:3px solid ${p.color||'#aaa'};
-        ${isTurn?'background:rgba(255,215,0,.15);':''}${isSelf?'outline:1px solid #fff;':''}">
-        <span class="hud-player-emoji">${a.emoji||'🐾'}</span>
-        <span style="font-weight:${isSelf?900:400}">${p.username.slice(0,8)}</span>
-        <span style="color:#FFD700;font-weight:900">🍌${p.bananas}</span>
-        ${p.superBananas>0?`<span style="color:gold">⭐${p.superBananas}</span>`:''}
+    let html = `<div class="hud-round">Ronda ${r}/${m}</div>`;
+    order.forEach(pid => {
+      const p = players[pid]; if (!p || p.disconnected) return;
+      const a      = AD[p.animal] || {};
+      const isTurn = pid === ct;
+      const isSelf = pid === socket.id;
+      html += `<div class="hud-player ${isTurn?'active':''}"
+        style="border-left-color:${p.color||'#aaa'}">
+        <span class="han">${a.emoji||'🐾'}</span>
+        <span style="font-weight:${isSelf?900:400}">${p.username.slice(0,7)}</span>
+        <span class="hbn">🍌${p.bananas}</span>
+        ${p.superBananas>0?`<span style="color:gold;font-size:.75rem">⭐${p.superBananas}</span>`:''}
         ${isTurn?'<span style="color:#FFD700;font-size:.7rem"> ▶</span>':''}
       </div>`;
     });
-    bar.innerHTML=html;
+    top.innerHTML = html;
   }
 
   // ── DADO ──────────────────────────────────────────────────
-  function showDice(canRoll){
-    isMyTurn=canRoll;
-    const ov=document.getElementById('dice-overlay');
-    ov.style.display='flex'; ov.classList.add('active');
-    document.getElementById('dice-result').style.display='none';
-    document.getElementById('dice-face').textContent='🎲';
-    document.getElementById('dice-face').style.animation='diceRoll .3s linear infinite';
-
-    const rb=document.getElementById('roll-btn');
-    rb.style.display=canRoll?'':'none';
-
-    let wm=document.getElementById('dice-wait-msg');
-    if(!wm){
-      wm=document.createElement('p');
-      wm.id='dice-wait-msg';
-      wm.style.cssText='color:rgba(255,255,255,.6);font-size:.9rem;margin-top:8px';
-      document.querySelector('.dice-container').appendChild(wm);
+  function setDice(canRoll, turno='') {
+    isMyTurn = canRoll;
+    const btn = $('dice-btn');
+    const wl  = $('wait-lbl');
+    if (btn) {
+      btn.disabled      = !canRoll;
+      btn.style.opacity = canRoll ? '1' : '.4';
+      btn.textContent   = '🎲';
     }
-    wm.style.display=canRoll?'none':'';
-    wm.textContent='Esperando a otros jugadores…';
+    if (wl) wl.textContent = canRoll ? '¡Tu turno!' : (turno ? `Turno de ${turno}` : '');
+    const res = $('dice-result');
+    if (res) res.textContent = '';
   }
 
-  function hideDice(){
-    setTimeout(()=>{
-      const ov=document.getElementById('dice-overlay');
-      ov.classList.remove('active'); ov.style.display='';
-    },2200);
-  }
-
-  function rollDice(){
-    if(!isMyTurn)return;
-    isMyTurn=false;
-    document.getElementById('roll-btn').style.display='none';
+  function roll() {
+    if (!isMyTurn) return;
+    isMyTurn = false;
+    setDice(false);
     SFX.dice();
+    // Animación dado girando
+    const btn   = $('dice-btn');
+    const faces = ['⚀','⚁','⚂','⚃','⚄','⚅'];
+    let i = 0;
+    const spin = setInterval(() => { if (btn) btn.textContent = faces[i%6]; i++; }, 80);
+    setTimeout(() => clearInterval(spin), 600);
     socket.emit('roll_dice');
   }
 
-  // ── MINIJUEGO ─────────────────────────────────────────────
-  function showMgIncoming(data){
-    const ov=document.getElementById('dice-overlay');
-    ov.classList.remove('active'); ov.style.display='';
+  // ── POP DE EFECTO DE CASILLA ──────────────────────────────
+  function showSpacePop(effect, isMe) {
+    if (!effect || effect.type === 'normal') return;
+    const pop = $('space-pop');
+    const em  = $('sp-emoji');
+    const txt = $('sp-txt');
+    const sub = $('sp-sub');
+    if (!pop) return;
 
-    const mg=document.getElementById('mg-overlay');
-    mg.classList.add('active');
+    const map = {
+      blue:     { emoji:'🔵', label:`+${effect.delta||5} 🍌`, desc:'Casilla azul' },
+      red:      { emoji:'🔴', label:`${effect.delta||-2} 🍌`, desc:'Casilla roja' },
+      star:     { emoji:'⭐', label:'¡Casilla Banana!',        desc:'Puedes comprar una Super Banana' },
+      supermini:{ emoji:'💜', label:'¡Super Minijuego!',       desc:'¡Modo equipos activado!' },
+    };
+    const cfg = map[effect.type];
+    if (!cfg) return;
 
-    const mgData= data.type==='super'
-      ? SUPER_MINIGAMES?.find(m=>m.id===data.minigameId)
-      : MINIGAMES?.find(m=>m.id===data.minigameId);
+    if (em)  em.textContent  = cfg.emoji;
+    if (txt) txt.textContent = cfg.label;
+    if (sub) sub.textContent = cfg.desc;
+    pop.style.display = 'block';
+    setTimeout(() => { pop.style.display = 'none'; }, 2800);
 
-    const badge=document.getElementById('mg-type-badge');
-    badge.className=`mg-type-badge ${data.type==='super'?'mg-type-super':'mg-type-normal'}`;
-    badge.textContent=data.type==='super'?'⚡ SUPER MINIJUEGO ⚡':'🎮 MINIJUEGO';
-
-    document.getElementById('mg-title').textContent   = mgData?.name ||`Minijuego #${data.minigameId}`;
-    document.getElementById('mg-subtitle').textContent= mgData?.desc ||'¡Prepárate!';
-
-    const td=document.getElementById('team-display');
-    if(data.type==='super'&&data.redTeam?.length){
-      td.style.display='flex';
-      const nm=ids=>ids.map(id=>gameState?.players?.[id]?.username||id).join(', ');
-      document.getElementById('team-red-members').textContent =nm(data.redTeam);
-      document.getElementById('team-blue-members').textContent=nm(data.blueTeam);
-    } else { td.style.display='none'; }
-
-    let cnt=data.countdown||5;
-    document.getElementById('mg-countdown').textContent=cnt;
-    SFX.pop();
-    const iv=setInterval(()=>{
-      cnt--; document.getElementById('mg-countdown').textContent=Math.max(0,cnt);
-      SFX.pop();
-      if(cnt<=0){
-        clearInterval(iv);
-        mg.classList.remove('active');
-        startMgCanvas(data, mgData);
-      }
-    },1000);
+    if (effect.type === 'blue')  SFX.coin();
+    if (effect.type === 'red')   SFX.lose();
+    if (effect.type === 'star')  { SFX.win(); if (isMe) setTimeout(() => { if (confirm('¿Comprar Super Banana por 50 🍌?')) socket.emit('buy_star'); }, 500); }
+    if (effect.type === 'supermini') SFX.win();
   }
 
-  function startMgCanvas(data, mgData){
-    const screen=document.getElementById('mg-game-screen');
-    screen.classList.add('active');
-    document.getElementById('mg-game-name').textContent=mgData?.name||`Minijuego #${data.minigameId}`;
+  // ── MINIJUEGO INCOMING ────────────────────────────────────
+  function showMgIncoming(data) {
+    // Ocultar tablero, mostrar pantalla de minijuego
+    show('screen-mg');
 
-    const players=gameState?.players
-      ? Object.values(gameState.players).filter(p=>!p.disconnected)
-      : [{id:socket.id,username:user?.username||'Tú',animal:myAnimal||'leon',color:'#FFD700'}];
+    // Verificar que MINIGAMES y SUPER_MINIGAMES existen (definidos en minigames.js)
+    const MG  = typeof MINIGAMES       !== 'undefined' ? MINIGAMES       : [];
+    const SMG = typeof SUPER_MINIGAMES !== 'undefined' ? SUPER_MINIGAMES : [];
 
-    const effective=mgData||{id:data.minigameId||1,type:'collect',dur:data.duration||20,name:'Minijuego'};
+    const mgData = data.type === 'super'
+      ? SMG.find(m => m.id === data.minigameId)
+      : MG.find(m  => m.id === data.minigameId);
 
-    // Auto-terminar si el engine no lo hace
-    const autoT=setTimeout(()=>{ if(mgEngine) mgEngine.destroy(); },
-      (effective.dur+2)*1000);
+    // Actualizar UI del intro
+    const badge = $('mg-badge');
+    const name  = $('mg-name');
+    const desc  = $('mg-desc');
+    const hname = $('mg-hud-name');
+    const intro = $('mg-intro');
+    const mgRes = $('mg-result');
 
-    mgEngine=new MinigameEngine('mg-canvas',socket.id,players,effective,results=>{
-      clearTimeout(autoT);
-      screen.classList.remove('active');
+    if (badge) { badge.className = `mg-badge ${data.type==='super'?'super':'normal'}`; badge.textContent = data.type==='super'?'⚡ SUPER MINIJUEGO ⚡':'🎮 MINIJUEGO'; }
+    if (name)  name.textContent  = mgData?.name || `Minijuego #${data.minigameId}`;
+    if (desc)  desc.textContent  = mgData?.desc || '¡Prepárate!';
+    if (hname) hname.textContent = mgData?.name || 'Minijuego';
+    if (intro) intro.classList.remove('hidden');
+    if (mgRes) mgRes.classList.remove('show');
+
+    // Countdown antes de iniciar
+    let cnt = data.countdown || 5;
+    const cdEl = $('mg-cd');
+    if (cdEl) cdEl.textContent = cnt;
+    SFX.pop();
+
+    const iv = setInterval(() => {
+      cnt--;
+      if (cdEl) cdEl.textContent = Math.max(0, cnt);
+      SFX.pop();
+      if (cnt <= 0) {
+        clearInterval(iv);
+        if (intro) intro.classList.add('hidden');
+        launchMg(data, mgData);
+      }
+    }, 1000);
+  }
+
+  function launchMg(data, mgData) {
+    // Verificar que MinigameEngine existe (definido en minigames.js)
+    if (typeof MinigameEngine === 'undefined') {
+      console.error('MinigameEngine no definido — verifica que minigames.js cargó correctamente');
+      // Auto-resolver para que el juego no se congele
+      const players = gs?.players || {};
+      const order   = gs?.order   || Object.keys(players);
+      const alive   = order.filter(id => !players[id]?.disconnected);
+      const sh      = [...alive].sort(() => Math.random() - .5);
+      socket.emit('minigame_done', { type:'normal', winner:sh[0]||null, second:sh[1]||null, third:sh[2]||null });
+      return;
+    }
+
+    const cv = $('mg-canvas');
+    if (cv) { cv.style.width='100%'; cv.style.height='100%'; }
+
+    const players = gs?.players
+      ? Object.values(gs.players).filter(p => !p.disconnected)
+      : [{ id:socket.id, username:user?.username||'Tú', animal:myAnimal||'leon', color:'#FFD700', team:'red' }];
+
+    const effective = mgData || { id:data.minigameId||1, type:'collect', dur:data.duration||25, name:'Minijuego' };
+
+    // Timer de seguridad: si el engine no termina, auto-reportar
+    const autoKill = setTimeout(() => {
+      if (mgEng) { mgEng.destroy(); mgEng = null; }
+      const order  = gs?.order || Object.keys(gs?.players || {});
+      const active = order.filter(id => !gs?.players?.[id]?.disconnected);
+      const sh     = [...active].sort(() => Math.random() - .5);
+      socket.emit('minigame_done', { type:'normal', winner:sh[0]||null, second:sh[1]||null, third:sh[2]||null });
+    }, (effective.dur + 4) * 1000);
+
+    mgEng = new MinigameEngine('mg-canvas', socket.id, players, effective, socket, results => {
+      clearTimeout(autoKill);
+      const mgRes = $('mg-result');
+      if (mgRes) mgRes.classList.add('show');
       showMgResult(results, data.type);
     });
-    mgEngine.start();
+    mgEng.start();
   }
 
-  function showMgResult(results, type){
-    const ov=document.getElementById('result-overlay');
-    ov.classList.add('active');
+  function showMgResult(results, type) {
+    const players = gs?.players || {};
+    const iWon    = results.winner === socket.id ||
+      (type === 'super' && players[socket.id]?.team === results.winnerTeam);
 
-    const players=gameState?.players||{};
-    const iWon=results.winner===socket.id||
-      (type==='super'&&players[socket.id]?.team===results.winnerTeam);
+    set('mg-rtrophy', iWon ? '🏆' : '😢');
+    set('mg-rtitle',  iWon ? '¡Ganaste!' : '¡Fin del minijuego!');
 
-    document.getElementById('result-trophy').textContent=iWon?'🏆':'😢';
-    document.getElementById('result-title').textContent =iWon?'¡Ganaste!':'¡Fin del minijuego!';
+    const list = $('mg-rlist');
+    if (list) {
+      list.innerHTML = '';
+      if (type === 'super') {
+        const wt = results.winnerTeam;
+        list.innerHTML = `<li class="ri r1">
+          <span class="ri-pos">${wt==='red'?'🔴':'🔵'}</span>
+          <span class="ri-name">Equipo ${wt==='red'?'Rojo':'Azul'} gana</span>
+          <span class="ri-rw">+1 ⭐ c/u</span></li>`;
+      } else {
+        [
+          { id:results.winner, cls:'r1', pos:'🥇', rw:'+10 🍌' },
+          { id:results.second, cls:'r2', pos:'🥈', rw:'+8 🍌'  },
+          { id:results.third,  cls:'r3', pos:'🥉', rw:'+6 🍌'  },
+        ].forEach(({ id, cls, pos, rw }) => {
+          if (!id) return;
+          const p  = players[id];
+          const li = document.createElement('li');
+          li.className = `ri ${cls}`;
+          li.innerHTML = `<span class="ri-pos">${pos}</span>
+            <span class="ri-name">${(p?.username||id).slice(0,14)}</span>
+            <span class="ri-rw">${rw}</span>`;
+          list.appendChild(li);
+        });
+      }
+    }
 
-    const list=document.getElementById('result-list');
-    list.innerHTML='';
+    const rw = $('mg-rrw');
+    if (rw) rw.textContent = type==='super'
+      ? 'Equipo ganador: +1 ⭐ Banana Dorada c/u'
+      : '🥇+10  🥈+8  🥉+6 🍌';
 
-    if(type==='super'){
-      const wt=results.winnerTeam;
-      const li=document.createElement('li');
-      li.className='result-item first';
-      li.innerHTML=`<span class="result-pos">${wt==='red'?'🔴':'🔵'}</span>
-        <span class="result-name">Equipo ${wt==='red'?'Rojo':'Azul'} gana</span>
-        <span class="result-reward">+1 ⭐ c/u</span>`;
-      list.appendChild(li);
-    } else {
-      [{id:results.winner,cls:'first', pos:'🥇',rw:'+10 🍌'},
-       {id:results.second,cls:'second',pos:'🥈',rw:'+8 🍌'},
-       {id:results.third, cls:'third', pos:'🥉',rw:'+6 🍌'}
-      ].forEach(({id,cls,pos,rw})=>{
-        if(!id)return;
-        const p=players[id];
-        const li=document.createElement('li');
-        li.className=`result-item ${cls}`;
-        li.innerHTML=`<span class="result-pos">${pos}</span>
-          <span class="result-name">${(p?.username||id).slice(0,14)}</span>
-          <span class="result-reward">${rw}</span>`;
-        list.appendChild(li);
+    // Solo el host (primer en order) reporta al servidor
+    const order  = gs?.order || Object.keys(players);
+    const active = order.filter(id => !players[id]?.disconnected);
+    if (active[0] === socket.id) {
+      socket.emit('minigame_done', { type: type || 'normal', ...results });
+    }
+
+    if (iWon) SFX.win(); else SFX.lose();
+  }
+
+  function mgContinue() {
+    const mgRes = $('mg-result');
+    if (mgRes) mgRes.classList.remove('show');
+    if (mgEng) { mgEng.destroy(); mgEng = null; }
+    // Volver al tablero
+    show('screen-game');
+  }
+
+  function mgBtnA() { if (mgEng) mgEng.pressA(); }
+  function mgBtnB() { if (mgEng) mgEng.pressB(); }
+
+  // ── FIN DE PARTIDA ────────────────────────────────────────
+  function showGameOver(data) {
+    if (mgEng) { mgEng.destroy(); mgEng = null; }
+    show('screen-gameover');
+
+    const medals = ['🥇','🥈','🥉','4️⃣','5️⃣','6️⃣','7️⃣','8️⃣'];
+    const AD     = typeof ANIMALS_DATA !== 'undefined' ? ANIMALS_DATA : {};
+    let myPal    = 0;
+
+    const fr = $('final-rank');
+    if (fr) {
+      fr.innerHTML = '';
+      data.ranking.forEach((p, i) => {
+        const pal = [3,2,1][i] || 0;
+        if (p.id === socket.id) myPal = pal;
+        const a   = AD[p.animal] || {};
+        const div = document.createElement('div');
+        div.className = `rrow ${i===0?'r1':i===1?'r2':''}`;
+        div.innerHTML = `
+          <div class="rem">${medals[i]||'·'}</div>
+          <div class="rem">${a.emoji||'🐾'}</div>
+          <div class="rinfo">
+            <div class="rname">${p.username}</div>
+            <div class="rstats">⭐${p.superBananas||0} · 🍌${p.bananas||0}</div>
+          </div>
+          ${pal > 0 ? `<div class="rpal">+${pal} 🌴</div>` : ''}`;
+        fr.appendChild(div);
       });
     }
 
-    document.getElementById('result-rewards').textContent=
-      type==='super'?'Equipo ganador: 1 ⭐ Banana Dorada c/u':'🥇+10  🥈+8  🥉+6 🍌';
-
-    // Reportar al servidor — solo el host (primer en turnOrder)
-    const order=gameState?.turnOrder||Object.keys(players);
-    const active=order.filter(id=>!players[id]?.disconnected);
-    if(active[0]===socket.id){
-      socket.emit('minigame_done',{type:type||'normal',...results});
-    }
-
-    if(iWon) SFX.win(); else SFX.lose();
+    set('palgained', `+${myPal} 🌴`);
+    if (user && myPal > 0) user.palmeras += myPal;
+    if (data.ranking[0]?.id === socket.id) SFX.win(); else SFX.lose();
   }
 
-  function continueGame(){
-    document.getElementById('result-overlay').classList.remove('active');
-    if(mgEngine){mgEngine.destroy();mgEngine=null;}
-  }
-
-  // ── FIN DE PARTIDA ────────────────────────────────────────
-  function showGameOver(data){
-    document.getElementById('screen-game-ui').style.display='none';
-    document.getElementById('game-canvas').style.display='none';
-    showScreen('screen-gameover');
-
-    const medals=['🥇','🥈','🥉','4️⃣','5️⃣','6️⃣','7️⃣','8️⃣'];
-    let myPal=0;
-    const rank=document.getElementById('final-rank');
-    rank.innerHTML='';
-    data.ranking.forEach((p,i)=>{
-      const pal=[3,2,1][i]||0;
-      if(p.id===socket.id) myPal=pal;
-      const a=ANIMALS_DATA[p.animal]||{};
-      const d=document.createElement('div');
-      d.className=`rank-row rank-${i+1}`;
-      d.innerHTML=`<div class="rank-emoji">${medals[i]||'·'}</div>
-        <div class="rank-emoji">${a.emoji||'🐾'}</div>
-        <div class="rank-info">
-          <div class="rank-name">${p.username}</div>
-          <div class="rank-stats">⭐${p.superBananas||0} Super · 🍌${p.bananas||0}</div>
-        </div>
-        ${pal>0?`<div class="rank-palmeras">+${pal} 🌴</div>`:''}`;
-      rank.appendChild(d);
-    });
-    document.getElementById('palmeras-earned').textContent=`+${myPal} 🌴`;
-    if(user&&myPal>0){ user.palmeras+=myPal; }
-    if(data.ranking[0]?.id===socket.id) SFX.win(); else SFX.lose();
-  }
-
-  function backToLobby(){
-    currentGame=currentLobby=gameState=null; isMyTurn=false;
-    if(boardRender)boardRender=null;
-    document.getElementById('game-canvas').style.display='none';
-    document.getElementById('screen-game-ui').style.display='none';
-    document.getElementById('result-overlay').classList.remove('active');
-    showScreen('screen-lobby');
+  function toLobby() {
+    gameId = null; gs = null; isMyTurn = false; board = null;
+    show('screen-lobby');
     refreshLobby();
   }
 
   // ── TIENDA ────────────────────────────────────────────────
-  function renderShop(){
-    if(typeof SKINS_DATA==='undefined')return;
-    const g=document.getElementById('skins-grid'); if(!g)return;
-    g.innerHTML=SKINS_DATA.map(sk=>{
-      const own=user?.ownedSkins?.includes(sk.id), act=user?.activeSkin===sk.id;
-      return `<div class="skin-card ${own?'owned':''} ${act?'active':''}">
-        <div class="skin-emoji">${sk.emoji}</div>
-        <div class="skin-name">${sk.name}</div>
-        <div class="skin-price">${sk.price===0?'Gratis':`${sk.price} 🌴`}</div>
-        ${act?'<div class="skin-status active">✓ Activo</div>'
-        :own?`<button class="btn btn-secondary btn-sm" onclick="G.equipSkin('${sk.id}')">Equipar</button>`
-        :`<button class="btn btn-primary btn-sm" onclick="G.buySkin('${sk.id}')">${sk.price===0?'Equipar':'Comprar'}</button>`}
+  function renderShop() {
+    if (typeof SKINS_DATA === 'undefined') return;
+    const g = $('skgrid'); if (!g) return;
+    g.innerHTML = SKINS_DATA.map(sk => {
+      const own = user?.ownedSkins?.includes(sk.id);
+      const act = user?.activeSkin === sk.id;
+      return `<div class="skcard ${own?'owned':''} ${act?'active':''}">
+        <div class="skem">${sk.emoji}</div>
+        <div class="sknm">${sk.name}</div>
+        <div class="skpr">${sk.price===0?'Gratis':`${sk.price} 🌴`}</div>
+        ${act ? '<div style="font-size:.72rem;color:var(--c1);margin-top:4px">✓ Activo</div>'
+        : own ? `<button class="btn btn-ghost btn-sm" onclick="G.equipSkin('${sk.id}')" style="margin-top:6px">Equipar</button>`
+        :       `<button class="btn btn-gold btn-sm"  onclick="G.buySkin('${sk.id}')"  style="margin-top:6px">${sk.price===0?'Equipar':'Comprar'}</button>`}
       </div>`;
     }).join('');
   }
-  function buySkin(id){ if(id==='default')return equipSkin(id); socket.emit('buy_skin',{skin:id}); }
-  function equipSkin(id){ socket.emit('equip_skin',{skin:id}); }
 
-  function loadLeaderboard(){ socket.emit('get_leaderboard'); }
-  function renderLeaderboard(data){
-    const el=document.getElementById('lb-list'); if(!el)return;
-    if(!data?.length){el.textContent='Sin datos.';return;}
-    const m=['🥇','🥈','🥉'];
-    el.innerHTML=data.map((p,i)=>`<div class="lb-row">
-      <div class="lb-pos">${m[i]||(i+1)}</div>
-      <div class="lb-name">${p.username}</div>
-      <div class="lb-stat">🎮${p.gamesPlayed}</div>
-      <div class="lb-wins">🏆${p.wins}</div>
-      <div class="lb-stat">🌴${p.palmeras}</div>
-    </div>`).join('');
-  }
-
-  function showStats(){
-    if(!user)return;
-    toast(`🏆${user.wins} victorias · 🎮${user.gamesPlayed} partidas · 🌴${user.palmeras} palmeras`);
-  }
-
-  function setVolume(t,v){
-    SFX.v=v/100;
-    const el=document.getElementById(`vol-${t}-val`);
-    if(el)el.textContent=v+'%';
-  }
-  function setLang(l){ toast(`Idioma: ${l==='es'?'Español 🇲🇽':l==='en'?'English 🇺🇸':'Português 🇧🇷'}`); }
-  function setQuality(q){ toast(`Calidad: ${q==='high'?'Alta':q==='med'?'Media':'Baja'}`); }
-  function toggleFullscreen(){
-    document.fullscreenElement?document.exitFullscreen():document.documentElement.requestFullscreen?.();
-  }
+  function buySkin(id)  { if (id==='default') return equipSkin(id); socket.emit('buy_skin',  { skin:id }); }
+  function equipSkin(id){ socket.emit('equip_skin', { skin:id }); }
+  function loadLB()     { socket.emit('get_leaderboard'); }
+  function myStats()    { if(user) T(`🏆${user.wins} victorias · 🎮${user.gamesPlayed} · 🌴${user.palmeras}`); }
+  function setVol(v)    { SFX.v = v/100; set('vvolt', v+'%'); }
+  function setLang(l)   { T(`Idioma: ${l==='es'?'Español 🇲🇽':'English 🇺🇸'}`); }
+  function fs()         { document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen?.(); }
 
   // ── INIT ──────────────────────────────────────────────────
-  function init(){
+  function init() {
     SFX.init();
-    socket=io();
+    socket = io();
 
-    socket.on('auth_result',res=>{
-      if(res.ok&&res.user){
-        user=res.user; refreshLobby(); renderShop();
-        showScreen('screen-lobby');
-        toast(`¡Bienvenido, ${user.username}! 🍌`,'ok'); SFX.win();
-      } else if(res.ok){
-        toast(res.msg,'ok'); switchTab('login');
-      } else { toast(res.msg||'Error.','err'); }
-    });
-
-    socket.on('error_msg',msg=>toast(msg,'err'));
-
-    socket.on('queue_update',data=>{
-      const te=document.getElementById('q-timer');
-      const pe=document.getElementById('q-players');
-      if(te) te.textContent=data.timeLeft;
-      if(pe) pe.innerHTML=`Jugadores: <strong>${data.players}</strong>/8`;
-      for(let i=0;i<8;i++){
-        const d=document.getElementById(`dot-${i}`);
-        if(d) d.classList.toggle('active',i<data.players);
+    // AUTH
+    socket.on('auth_result', res => {
+      if (res.ok && res.user) {
+        user = res.user; refreshLobby(); renderShop();
+        show('screen-lobby');
+        T(`¡Bienvenido, ${user.username}! 🍌`, 'ok'); SFX.win();
+      } else if (res.ok) {
+        T(res.msg, 'ok'); tab('login');
+      } else {
+        T(res.msg || 'Error.', 'err');
       }
     });
 
-    // ── LOBBY PARTIDA ──────────────────────────────────────
-    socket.on('lobby_created',data=>{
-      currentLobby=data.lobbyId;
-      clearInterval(queueInterval);
-      showScreen('screen-charsel');
-      renderCharSel(data.players);
-      let t=data.timeLeft||25;
-      const te=document.getElementById('cs-timer');
-      if(te) te.textContent=t;
-      csTimer=setInterval(()=>{
-        t--; if(te) te.textContent=Math.max(0,t);
-        if(t<=0) clearInterval(csTimer);
-      },1000);
+    socket.on('error_msg', msg => T(msg, 'err'));
+
+    // COLA
+    socket.on('queue_update', data => {
+      set('qtimer', data.timeLeft);
+      set('qcount', data.players);
+      for (let i=0; i<8; i++) {
+        const d = $(`d${i}`);
+        if (d) d.classList.toggle('on', i < data.players);
+      }
     });
 
-    socket.on('lobby_update',data=>renderCharSel(data.players));
+    // LOBBY DE PARTIDA
+    socket.on('lobby_created', data => {
+      lobbyId = data.lobbyId;
+      clearInterval(qDots);
+      show('screen-charsel');
+      renderCS(data.players);
 
-    socket.on('animal_taken',data=>{
-      const a=ANIMALS_DATA[data.animal];
-      toast(`${a?.name||data.animal} ya fue elegido.`,'err');
+      let t = data.timeLeft || 25;
+      const te = $('cst'); if (te) te.textContent = t;
+      csTimer = setInterval(() => {
+        t--; if (te) te.textContent = Math.max(0, t);
+        if (t <= 0) clearInterval(csTimer);
+      }, 1000);
     });
 
-    // ── JUEGO ──────────────────────────────────────────────
-    socket.on('game_start',data=>{
+    socket.on('lobby_update', data => renderCS(data.players));
+
+    socket.on('animal_taken', data => {
+      const AD = typeof ANIMALS_DATA !== 'undefined' ? ANIMALS_DATA : {};
+      T(`${AD[data.animal]?.name || data.animal} ya fue elegido.`, 'err');
+    });
+
+    // JUEGO
+    socket.on('game_start', data => {
       clearInterval(csTimer);
-      gameState=data;
-      initGame(data);
+      gs = data;
+      startGame(data);
     });
 
-    socket.on('turn_update',data=>{
-      if(gameState){
-        gameState.currentTurn=data.currentTurn;
-        gameState.players    =data.players||gameState.players;
-        gameState.round      =data.round  ||gameState.round;
-      }
-      if(boardRender){
-        boardRender.updatePlayers(data.players||gameState?.players||{});
-        boardRender.focusTurn(data.currentTurn);
-      }
+    socket.on('turn_update', data => {
+      if (gs) { gs.currentTurn = data.currentTurn; gs.players = data.players || gs.players; gs.round = data.round || gs.round; }
+      if (board) { board.setPlayers(data.players || gs?.players || {}); board.focusTurn(data.currentTurn); }
       updateHUD(data);
-      const isMe=data.currentTurn===socket.id;
-      showDice(isMe);
-      if(isMe){ toast('🎲 ¡Tu turno! Tira el dado.','ok'); SFX.coin(); }
-      else{
-        const p=data.players?.[data.currentTurn];
-        toast(`👁 Turno de ${p?.username||'…'}`,'');
-      }
+      const isMe  = data.currentTurn === socket.id;
+      const turno = data.players?.[data.currentTurn]?.username || '';
+      setDice(isMe, turno);
+      if (isMe) { T('🎲 ¡Es tu turno! Tira el dado.', 'ok'); SFX.coin(); }
+      else T(`👁 Turno de ${turno}`, '');
     });
 
-    socket.on('your_turn',()=>{
-      isMyTurn=true;
-      const rb=document.getElementById('roll-btn');
-      if(rb) rb.style.display='';
+    socket.on('your_turn', () => {
+      isMyTurn = true;
+      const btn = $('dice-btn');
+      if (btn) { btn.disabled = false; btn.style.opacity='1'; btn.textContent='🎲'; }
     });
 
-    socket.on('player_moved',data=>{
-      if(gameState?.players?.[data.playerId]){
-        gameState.players[data.playerId].position=data.newPos;
-        gameState.players[data.playerId].bananas =data.bananas;
+    socket.on('player_moved', data => {
+      // Actualizar estado local
+      if (gs?.players?.[data.playerId]) {
+        gs.players[data.playerId].position = data.newPos;
+        gs.players[data.playerId].bananas  = data.bananas;
       }
-      if(boardRender){
-        boardRender.animateMove(data.playerId,data.prevPos,data.newPos,()=>{
-          if(boardRender&&data.players)
-            boardRender.updatePlayers(data.players);
+      // Animar en tablero
+      if (board) {
+        board.setPlayers(data.players || gs?.players || {});
+        board.movePlayer(data.playerId, data.prevPos, data.newPos, () => {
+          if (board && data.players) board.setPlayers(data.players);
         });
       }
+      showSpacePop(data.spaceEffect, data.playerId === socket.id);
+      SFX.move();
+      updateHUD({ players: data.players || gs?.players, round: gs?.round, maxRounds: gs?.maxRounds, order: gs?.order });
+    });
 
-      if(data.spaceEffect&&data.playerId===socket.id){
-        const e=data.spaceEffect;
-        if(e.type==='blue')   { toast(`🔵 +${e.delta} 🍌`,'ok'); SFX.coin(); }
-        if(e.type==='red')    { toast(`🔴 ${e.delta} 🍌`,'err'); SFX.lose(); }
-        if(e.type==='star')   {
-          toast('⭐ ¡Casilla Super Banana!','ok'); SFX.win();
-          setTimeout(()=>{ if(confirm('¿Comprar Super Banana por 50 🍌?')) socket.emit('buy_star'); },600);
+    socket.on('next_round', data => {
+      if (gs) { gs.round = data.round; gs.players = data.players || gs.players; }
+      updateHUD({ ...data, order: gs?.order });
+      T(`🎲 Ronda ${data.round} de ${data.maxRounds}`, 'ok');
+    });
+
+    socket.on('buy_result', data => {
+      if (data.success) {
+        T('⭐ ¡Super Banana comprada!', 'ok'); SFX.win();
+        if (gs?.players?.[socket.id]) {
+          gs.players[socket.id].bananas      = data.bananas;
+          gs.players[socket.id].superBananas = data.superBananas;
         }
-        if(e.type==='supermini') toast('💜 ¡Super Minijuego activado!','ok');
-      }
-
-      hideDice();
-      updateHUD({players:data.players||gameState?.players,
-        round:gameState?.round,maxRounds:gameState?.maxRounds,
-        turnOrder:gameState?.turnOrder});
+        if (board) board.setPlayers(gs.players);
+        updateHUD(gs);
+      } else { T(data.msg, 'err'); }
     });
 
-    socket.on('next_round',data=>{
-      if(gameState){ gameState.round=data.round; gameState.players=data.players||gameState.players; }
-      updateHUD({...data,turnOrder:gameState?.turnOrder});
-      toast(`🎲 Ronda ${data.round} de ${data.maxRounds}`,'ok');
-    });
+    socket.on('minigame_incoming', data => showMgIncoming(data));
 
-    socket.on('buy_result',data=>{
-      if(data.success){
-        toast('⭐ ¡Super Banana comprada!','ok'); SFX.win();
-        if(gameState?.players?.[socket.id]){
-          gameState.players[socket.id].bananas     =data.bananas;
-          gameState.players[socket.id].superBananas=data.superBananas;
-        }
-        if(boardRender)boardRender.updatePlayers(gameState.players);
-        updateHUD(gameState);
-      } else { toast(data.msg,'err'); }
-    });
-
-    socket.on('minigame_incoming', data=>showMgIncoming(data));
-
-    socket.on('minigame_result',data=>{
-      if(data.players&&gameState){
-        gameState.players=data.players;
-        if(boardRender)boardRender.updatePlayers(data.players);
-        updateHUD(gameState);
+    socket.on('minigame_result', data => {
+      if (data.players && gs) {
+        gs.players = data.players;
+        if (board) board.setPlayers(data.players);
+        updateHUD(gs);
       }
     });
 
-    socket.on('player_disconnected',data=>{
-      toast(`⚠️ ${data.username||'Jugador'} se desconectó.`,'err');
-      if(gameState?.players?.[data.playerId])
-        gameState.players[data.playerId].disconnected=true;
+    // Posiciones en tiempo real de otros jugadores en el minijuego
+    socket.on('mg_pos', data => {
+      if (mgEng) mgEng.remotePos[data.id] = { x:data.x, y:data.y, hp:data.hp, score:data.score };
     });
 
-    socket.on('game_over',data=>{ gameState=null; showGameOver(data); });
-
-    socket.on('shop_result',data=>{
-      if(data.ok){
-        toast('¡Skin comprada! 🎨','ok'); SFX.coin();
-        if(user){user.palmeras=data.palmeras;user.ownedSkins=data.ownedSkins;}
-        const ep=document.getElementById('u-palmeras');
-        if(ep)ep.textContent=data.palmeras;
-        const sp=document.getElementById('shop-palmeras');
-        if(sp)sp.textContent=data.palmeras+' 🌴';
-        renderShop();
-      } else { toast(data.msg,'err'); }
+    socket.on('player_disconnected', data => {
+      T(`⚠️ ${data.username||'Jugador'} se desconectó.`, 'err');
+      if (gs?.players?.[data.playerId]) gs.players[data.playerId].disconnected = true;
     });
 
-    socket.on('skin_equipped',data=>{
-      if(user)user.activeSkin=data.activeSkin;
-      toast('Skin equipada ✓','ok');
-      renderShop(); refreshLobby();
+    socket.on('game_over', data => { gs = null; showGameOver(data); });
+
+    socket.on('shop_result', data => {
+      if (data.ok) {
+        T('¡Skin comprada! 🎨', 'ok'); SFX.coin();
+        if (user) { user.palmeras = data.palmeras; user.ownedSkins = data.ownedSkins; }
+        set('upal', data.palmeras); renderShop();
+      } else { T(data.msg, 'err'); }
     });
 
-    socket.on('leaderboard_data',data=>renderLeaderboard(data));
-    socket.on('disconnect',()=>toast('Desconectado…','err'));
-    socket.on('connect',()=>{ if(user)toast('Reconectado ✓','ok'); });
+    socket.on('skin_equipped', data => {
+      if (user) user.activeSkin = data.activeSkin;
+      T('Skin equipada ✓', 'ok'); renderShop(); refreshLobby();
+    });
+
+    socket.on('leaderboard_data', data => {
+      const el = $('lblist'); if (!el) return;
+      if (!data?.length) { el.textContent = 'Sin datos.'; return; }
+      const m = ['🥇','🥈','🥉'];
+      el.innerHTML = data.map((p,i) => `<div class="lbrow">
+        <div class="lbpos">${m[i]||(i+1)}</div>
+        <div class="lbname">${p.username}</div>
+        <div class="lbstat">🎮${p.gamesPlayed}</div>
+        <div class="lbwins">🏆${p.wins}</div>
+        <div class="lbstat">🌴${p.palmeras}</div>
+      </div>`).join('');
+    });
+
+    socket.on('disconnect', () => T('Desconectado…', 'err'));
+    socket.on('connect',    () => { if (user) T('Reconectado ✓', 'ok'); });
   }
 
+  // ── API PÚBLICA ───────────────────────────────────────────
   return {
-    init,showAuth,showScreen,switchTab,
-    doLogin,doRegister,logout,
-    joinQueue,leaveQueue,
-    selectAnimal,
-    rollDice,
-    continueGame,backToLobby,
-    loadLeaderboard,
-    buySkin,equipSkin,
-    showStats,
-    setVolume,setLang,setQuality,toggleFullscreen,
+    init, showAuth, show, tab,
+    login, register, logout,
+    queue, leaveQ,
+    pickAnimal,
+    roll,
+    mgContinue, mgBtnA, mgBtnB,
+    toLobby,
+    loadLB, buySkin, equipSkin,
+    myStats, setVol, setLang, fs,
   };
 })();
