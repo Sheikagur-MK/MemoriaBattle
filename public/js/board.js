@@ -1,4 +1,22 @@
-._BIOME_BG[biome] + 'cc';
+class BoardRender {
+  constructor(canvas, boardData) {
+    this.ctx = canvas.getContext('2d');
+    this.board = boardData;
+    this._totalW = canvas.width;
+    this._BIOME_EMOJI = { forest: '🌲', desert: '🌵', ice: '❄️', volcano: '🌋' }; // Ajusta según tus biomas
+  }
+
+  // Busca esta función en tu archivo o agrégala si no está:
+  _drawBiomes() {
+    const ctx = this.ctx;
+    // Aquí es donde va el código que me pasaste:
+    this.board.forEach((space, i) => {
+      const biome = space.biome;
+      const y0 = i * 50; // Ajusta según tu lógica de altura de casilla
+      const h = 50;
+
+      // ELIMINA EL PUNTO INICIAL QUE TENÍAS ANTES
+      ctx.fillStyle = this._BIOME_BG[biome] + 'cc'; 
       ctx.fillRect(-8, y0, this._totalW + 16, h);
 
       // Etiqueta de bioma
@@ -11,6 +29,7 @@
       );
     });
   }
+}
 
   // ── CONEXIONES ────────────────────────────────────────────
   _drawConnections() {
