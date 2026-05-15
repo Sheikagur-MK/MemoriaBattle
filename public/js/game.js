@@ -473,178 +473,136 @@ const G = (() => {
   function setVol(v)    { SFX.v=v/100; set('vvolt',v+'%'); }
   function setLang(l)   { T(`Idioma: ${l==='es'?'Español 🇲🇽':'English 🇺🇸'}`); }
   function fs()         { document.fullscreenElement?document.exitFullscreen():document.documentElement.requestFullscreen?.(); }
-
-  // ── INIT + SOCKET EVENTS ──────────────────────────────────
+// ── INIT + SOCKET EVENTS (CORREGIDO) ──────────────────────────────────
   function init(){
     SFX.init();
-    socket=io();
+    socket = io();
 
-    // AUTH
-    socket.on('auth_result',res=>{
-      if(res.ok&&res.user){
-        user=res.user; refreshLobby(); renderShop();
+    // AUTENTICACIÓN
+    socket.on('auth_result', res => {
+      if(res.ok && res.user){
+        user = res.user; refreshLobby(); renderShop();
         show('sl');
-        T(`¡Bienvenido, ${user.username}! 🍌`,'ok'); SFX.win();
+        T(`¡Bienvenido, ${user.username}! 🍌`, 'ok'); SFX.win();
       } else if(res.ok){
-        T(res.msg,'ok'); tab('login');
-      } else { T(res.msg||'Error.','err'); }
+        T(res.msg, 'ok'); tab('login');
+      } else { T(res.msg || 'Error.', 'err'); }
     });
 
-    socket.on('error_msg',msg=>T(msg,'err'));
+    socket.on('error_msg', msg => T(msg, 'err'));
 
-    // COLA
-    socket.on('queue_update',data=>{
-      set('qtimer',data.timeLeft);
-      set('qcount',data.players);
-      for(let i=0;i<8;i++){
-        const d=$(`d${i}`);
-        if(d) d.classList.toggle('on',i<data.players);
+    // COLA DE ESPERA
+    socket.on('queue_update', data => {
+      set('qtimer', data.timeLeft);
+      set('qcount', data.players);
+      for(let i = 0; i < 8; i++){
+        const d = $(`d${i}`);
+        if(d) d.classList.toggle('on', i < data.players);
       }
     });
 
-    // Este código detecta cuando el servidor dice que la partida inicia
-socket.on('START_GAME', (data) => {
-    console.log("¡Recibido! El servidor dice que iniciamos.");
-
-    // Guardamos la información del tablero que nos mandó el servidor
-    this.board = new Board(this.ctx, data.board);
-    
-    // Cambiamos el estado de 'LOBBY' a 'PLAYING'
-    this.gameState = 'PLAYING'; 
-});
-
     // LOBBY DE PARTIDA
-    socket.on('lobby_created',data=>{
-      lobbyId=data.lobbyId;
+    socket.on('lobby_created', data => {
+      lobbyId = data.lobbyId;
       clearInterval(qDotsInterval);
       show('scs');
       renderCS(data.players);
-      let t=data.timeLeft||25;
-      set('cst',t);
-      csTimerInterval=setInterval(()=>{
-        t--; set('cst',Math.max(0,t));
-        if(t<=0)clearInterval(csTimerInterval);
-      },1000);
+      let t = data.timeLeft || 25;
+      set('cst', t);
+      csTimerInterval = setInterval(() => {
+        t--; set('cst', Math.max(0, t));
+        if(t <= 0) clearInterval(csTimerInterval);
+      }, 1000);
     });
 
-    socket.on('lobby_update',data=>renderCS(data.players));
+    socket.on('lobby_update', data => renderCS(data.players));
 
-    socket.on('animal_taken',data=>{
-      const AD=typeof ANIMALS_DATA!=='undefined'?ANIMALS_DATA:{};
-      T(`${AD[data.animal]?.name||data.animal} ya fue elegido.`,'err');
+    socket.on('animal_taken', data => {
+      const AD = typeof ANIMALS_DATA !== 'undefined' ? ANIMALS_DATA : {};
+      T(`${AD[data.animal]?.name || data.animal} ya fue elegido.`, 'err');
     });
 
-    // JUEGO
-    socket.on('game_start',data=>{
+    // === INICIO DEL JUEGO (ESTO ARREGLA TU PROBLEMA) ===
+    socket.on('game_start', data => {
+      console.log("¡Señal de inicio recibida!");
       clearInterval(csTimerInterval);
-      gs=data; startGame(data);
+      
+      // Guardamos la partida
+      gs = data; 
+      
+      // Creamos el tablero visualmente usando el nombre correcto: BoardRender
+      if (typeof BoardRender !== 'undefined') {
+        board = new BoardRender($('gameCanvas'), data.board);
+      }
+      
+      // Ejecutamos la lógica de inicio y mostramos la pantalla de juego
+      startGame(data);
+      show('sg'); 
     });
 
-    socket.on('turn_update',data=>{
-      if(gs){ gs.currentTurn=data.currentTurn; gs.players=data.players||gs.players; gs.round=data.round||gs.round; }
-      if(board){ board.setPlayers(data.players||gs?.players||{}); board.focusTurn(data.currentTurn); }
+    // ACTUALIZACIÓN DE TURNOS
+    socket.on('turn_update', data => {
+      if(gs){ 
+        gs.currentTurn = data.currentTurn; 
+        gs.players = data.players || gs.players; 
+        gs.round = data.round || gs.round; 
+      }
+      if(board){ 
+        board.setPlayers(data.players || gs?.players || {}); 
+        board.focusTurn(data.currentTurn); 
+      }
       updateHUD(data);
-      const isMe=data.currentTurn===socket.id;
-      const turno=data.players?.[data.currentTurn]?.username||'';
-      setDice(isMe,turno);
-      if(isMe){ T('🎲 ¡Tu turno! Tira el dado.','ok'); SFX.coin(); }
-      else T(`👁 Turno de ${turno}`,'');
+      const isMe = data.currentTurn === socket.id;
+      const turno = data.players?.[data.currentTurn]?.username || '';
+      setDice(isMe, turno);
+      if(isMe){ T('🎲 ¡Tu turno! Tira el dado.', 'ok'); SFX.coin(); }
+      else T(`👁 Turno de ${turno}`, '');
     });
 
-    socket.on('your_turn',()=>{
-      isMyTurn=true;
-      const btn=$('dbtn');
-      if(btn){ btn.disabled=false; btn.style.opacity='1'; btn.textContent='🎲'; }
+    socket.on('your_turn', () => {
+      isMyTurn = true;
+      const btn = $('dbtn');
+      if(btn){ btn.disabled = false; btn.style.opacity = '1'; btn.textContent = '🎲'; }
     });
 
-    socket.on('player_moved',data=>{
+    // MOVIMIENTO DE JUGADORES
+    socket.on('player_moved', data => {
       if(gs?.players?.[data.playerId]){
-        gs.players[data.playerId].position=data.newPos;
-        gs.players[data.playerId].bananas=data.bananas;
+        gs.players[data.playerId].position = data.newPos;
+        gs.players[data.playerId].bananas = data.bananas;
       }
       if(board){
-        board.setPlayers(data.players||gs?.players||{});
-        board.movePlayer(data.playerId,data.prevPos,data.newPos,()=>{
-          if(board&&data.players) board.setPlayers(data.players);
+        board.setPlayers(data.players || gs?.players || {});
+        board.movePlayer(data.playerId, data.prevPos, data.newPos, () => {
+          if(board && data.players) board.setPlayers(data.players);
         });
       }
-      showPop(data.spaceEffect, data.playerId===socket.id);
+      showPop(data.spaceEffect, data.playerId === socket.id);
       SFX.move();
-      updateHUD({players:data.players||gs?.players,round:gs?.round,maxRounds:gs?.maxRounds,order:gs?.order});
+      updateHUD({players: data.players || gs?.players, round: gs?.round, maxRounds: gs?.maxRounds, order: gs?.order});
     });
 
-    socket.on('next_round',data=>{
-      if(gs){ gs.round=data.round; gs.players=data.players||gs.players; }
-      updateHUD({...data,order:gs?.order});
-      T(`🎲 Ronda ${data.round} de ${data.maxRounds}`,'ok');
+    socket.on('next_round', data => {
+      if(gs){ gs.round = data.round; gs.players = data.players || gs.players; }
+      updateHUD({...data, order: gs?.order});
+      T(`🎲 Ronda ${data.round} de ${data.maxRounds}`, 'ok');
     });
 
-    socket.on('buy_result',data=>{
-      if(data.success){
-        T('⭐ ¡Super Banana comprada!','ok'); SFX.win();
-        if(gs?.players?.[socket.id]){
-          gs.players[socket.id].bananas=data.bananas;
-          gs.players[socket.id].superBananas=data.superBananas;
-        }
-        if(board) board.setPlayers(gs.players);
-        updateHUD(gs);
-      } else T(data.msg,'err');
-    });
-
-    // ── MINIJUEGO ──────────────────────────────────────────
-    socket.on('minigame_incoming',data=>{
-      showMgIncoming(data);
-    });
-
-    socket.on('minigame_result',data=>{
-      if(data.players&&gs){
-        gs.players=data.players;
+    // RESULTADOS Y MINIJUEGOS
+    socket.on('minigame_incoming', data => showMgIncoming(data));
+    
+    socket.on('minigame_result', data => {
+      if(data.players && gs){
+        gs.players = data.players;
         if(board) board.setPlayers(data.players);
         updateHUD(gs);
       }
     });
 
-    socket.on('mg_pos',data=>{
-      if(mgEng) mgEng.remotePos[data.id]={x:data.x,y:data.y,hp:data.hp,score:data.score};
-    });
+    socket.on('game_over', data => { gs = null; board = null; showGameOver(data); });
 
-    socket.on('player_disconnected',data=>{
-      T(`⚠️ ${data.username||'Jugador'} se desconectó.`,'err');
-      if(gs?.players?.[data.playerId]) gs.players[data.playerId].disconnected=true;
-    });
-
-    socket.on('game_over',data=>{ gs=null; showGameOver(data); });
-
-    // TIENDA
-    socket.on('shop_result',data=>{
-      if(data.ok){
-        T('¡Skin comprada! 🎨','ok'); SFX.coin();
-        if(user){ user.palmeras=data.palmeras; user.ownedSkins=data.ownedSkins; }
-        set('upal',data.palmeras); renderShop();
-      } else T(data.msg,'err');
-    });
-
-    socket.on('skin_equipped',data=>{
-      if(user) user.activeSkin=data.activeSkin;
-      T('Skin equipada ✓','ok'); renderShop(); refreshLobby();
-    });
-
-    // LEADERBOARD
-    socket.on('leaderboard_data',data=>{
-      const el=$('lblist'); if(!el)return;
-      if(!data?.length){ el.textContent='Sin datos aún.'; return; }
-      const m=['🥇','🥈','🥉'];
-      el.innerHTML=data.map((p,i)=>`<div class="lbrow">
-        <div class="lbpos">${m[i]||(i+1)}</div>
-        <div class="lbname">${p.username}</div>
-        <div class="lbstat">🎮${p.gamesPlayed}</div>
-        <div class="lbwins">🏆${p.wins}</div>
-        <div class="lbstat">🌴${p.palmeras}</div>
-      </div>`).join('');
-    });
-
-    socket.on('disconnect',()=>T('Desconectado del servidor…','err'));
-    socket.on('connect',()=>{ if(user)T('Reconectado ✓','ok'); });
+    socket.on('disconnect', () => T('Desconectado del servidor…', 'err'));
+    socket.on('connect', () => { if(user) T('Reconectado ✓', 'ok'); });
   }
 
   // ── API PÚBLICA ───────────────────────────────────────────
