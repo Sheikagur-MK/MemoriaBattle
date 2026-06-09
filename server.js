@@ -55,7 +55,6 @@ function tryStartMatch() {
   p1_sock.currentGame = gameId;
   p2_sock.currentGame = gameId;
 
-  // El servidor lanza la moneda
   const coinWinner = Math.random() < 0.5 ? p1_sock.id : p2_sock.id;
 
   games[gameId] = {
@@ -92,7 +91,10 @@ async function endGame(gameId, winnerId) {
   io.to(gameId).emit('game_over', { 
     winner: winner.username, 
     winnerTeam: winner.team,
-    scores: { red: g.players[Object.keys(g.players)[0]].score, blue: g.players[Object.keys(g.players)[1]].score }
+    scores: { 
+      red: Object.values(g.players).find(p => p.team === 'red').score, 
+      blue: Object.values(g.players).find(p => p.team === 'blue').score 
+    }
   });
 
   try {
@@ -140,54 +142,51 @@ io.on('connection', sock => {
     tryStartMatch();
   });
 
-  sock.on('leave_queue', () => {
-    queue = queue.filter(id => id !== sock.id);
-  });
+  sock.on('leave_queue', () => { queue = queue.filter(id => id !== sock.id); });
 
-  // GAMEPLAY
+  // GAMEPLAY (1 TURNO = AÑADIR 1 CASILLA)
   sock.on('cell_picked', (cellIndex) => {
     const g = games[sock.currentGame];
     if (!g || g.turn !== sock.id || g.phase !== 'pick') return;
     
-    g.sequence.push(cellIndex);
+    // Formato para que el cliente renderice el color correcto del chip (0=rojo, 1=azul)
+    const playerIndex = g.players[sock.id].team === 'red' ? 0 : 1;
+    g.sequence.push({ p: playerIndex, c: cellIndex });
     
-    // Cambiar turno y fase
     const otherPlayerId = Object.keys(g.players).find(id => id !== sock.id);
     g.turn = otherPlayerId;
     g.phase = 'input';
     g.currentInputIdx = 0;
 
-    io.to(sock.currentGame).emit('update_sequence', { 
-      sequence: g.sequence, 
-      nextTurn: g.turn, 
-      phase: g.phase 
-    });
+    io.to(sock.currentGame).emit('update_sequence', { sequence: g.sequence, nextTurn: g.turn, phase: g.phase });
   });
 
   sock.on('cell_input', (cellIndex) => {
     const g = games[sock.currentGame];
     if (!g || g.turn !== sock.id || g.phase !== 'input') return;
 
-    const expectedCell = g.sequence[g.currentInputIdx];
+    const expectedCell = g.sequence[g.currentInputIdx].c; // Extraemos solo el índice de la casilla
 
     if (cellIndex === expectedCell) {
       g.currentInputIdx++;
       io.to(sock.currentGame).emit('input_correct', { cellIndex, inputIdx: g.currentInputIdx });
 
       if (g.currentInputIdx >= g.sequence.length) {
-        g.turn = sock.id; // El que acertó ahora escoge
+        g.turn = sock.id; 
         g.phase = 'pick';
         io.to(sock.currentGame).emit('phase_change', { nextTurn: g.turn, phase: g.phase });
       }
     } else {
-      // Error: pierde la ronda
       const winnerId = Object.keys(g.players).find(id => id !== sock.id);
       g.players[winnerId].score++;
       
+      const redScore = Object.values(g.players).find(p => p.team === 'red').score;
+      const blueScore = Object.values(g.players).find(p => p.team === 'blue').score;
+
       io.to(sock.currentGame).emit('round_end', { 
         winnerId, 
         loserId: sock.id,
-        scores: g.players,
+        scores: { red: redScore, blue: blueScore },
         failedCell: cellIndex
       });
 
@@ -197,7 +196,6 @@ io.on('connection', sock => {
         g.round++;
         g.sequence = [];
         g.phase = 'pick';
-        // El ganador de la ronda inicia la siguiente
         g.turn = winnerId; 
         setTimeout(() => {
           io.to(sock.currentGame).emit('new_round', { round: g.round, turn: g.turn });
