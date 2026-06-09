@@ -43,12 +43,10 @@ body::after{ content:'';position:fixed;inset:0; background:repeating-linear-grad
 .panel { background: var(--panel); border: 1px solid var(--border); padding: 20px; border-radius: 8px; box-shadow: 0 4px 15px rgba(0,0,0,0.5); }
 .panel h3 { font-family: 'Orbitron'; font-size: 14px; color: var(--cyan); letter-spacing: 3px; margin-bottom: 15px; border-bottom: 1px solid var(--border); padding-bottom: 5px; }
 
-/* Ranks */
 .rank-badge { display: inline-block; padding: 5px 12px; border-radius: 4px; font-family: 'Orbitron'; font-weight: 700; font-size: 11px; letter-spacing: 1px; border: 1px solid; text-shadow: 0 0 5px rgba(0,0,0,0.5); }
 .info-list { font-size: 11px; line-height: 1.6; color: var(--text); }
 .info-list li { margin-bottom: 6px; list-style: none; display: flex; justify-content: space-between; }
 
-/* Leaderboard */
 .lb-table { width: 100%; border-collapse: collapse; font-size: 12px; }
 .lb-table th { text-align: left; padding: 8px; border-bottom: 1px solid var(--border); color: var(--dim); }
 .lb-table td { padding: 8px; border-bottom: 1px solid rgba(255,255,255,0.05); }
@@ -251,7 +249,6 @@ body::after{ content:'';position:fixed;inset:0; background:repeating-linear-grad
 const socket = io();
 let currentUser = null;
 
-// RANGOS Y COLORES
 const RANKS = [
     { min: 0, max: 49, name: "Principiante 1", color: "#888", bg: "#222" },
     { min: 50, max: 74, name: "Principiante 2", color: "#4caf50", bg: "rgba(76, 175, 80, 0.2)" },
@@ -268,11 +265,8 @@ const RANKS = [
     { min: 1000, max: 99999, name: "Cerebro Maestro", color: "#ff2244", bg: "rgba(255, 34, 68, 0.3)", shadow: "0 0 10px #ff2244" }
 ];
 
-function getRank(brains) {
-    return RANKS.find(r => brains >= r.min && brains <= r.max) || RANKS[0];
-}
+function getRank(brains) { return RANKS.find(r => brains >= r.min && brains <= r.max) || RANKS[0]; }
 
-// ESTADO DEL JUEGO ONLINE
 const S = {
   p1:'', p2:'', scores:[0,0], round:1, 
   sequence:[], phase:'', turnId:'', 
@@ -324,9 +318,7 @@ function updateProfileUI() {
     const rank = getRank(currentUser.brains);
     const rb = document.getElementById('lobby-rank');
     rb.innerText = rank.name.toUpperCase();
-    rb.style.color = rank.color;
-    rb.style.borderColor = rank.color;
-    rb.style.backgroundColor = rank.bg;
+    rb.style.color = rank.color; rb.style.borderColor = rank.color; rb.style.backgroundColor = rank.bg;
     if (rank.shadow) rb.style.boxShadow = rank.shadow;
 }
 
@@ -352,27 +344,22 @@ function searchMatch() {
     document.getElementById('mm-brain').style.display = "none";
 }
 
-socket.on('match_found', () => {
-    document.getElementById('mm-text').innerText = "RIVAL ENCONTRADO\nCARGANDO PARTIDA...";
-});
+socket.on('match_found', () => { document.getElementById('mm-text').innerText = "RIVAL ENCONTRADO\nCARGANDO PARTIDA..."; });
 
 socket.on('game_start', (data) => {
     const p1Data = Object.values(data.players).find(p => p.team === 'red');
     const p2Data = Object.values(data.players).find(p => p.team === 'blue');
     
-    S.p1 = p1Data.username;
-    S.p2 = p2Data.username;
+    S.p1 = p1Data.username; S.p2 = p2Data.username;
     S.myTeam = data.players[socket.id].team;
     S.myTurnIndex = S.myTeam === 'red' ? 0 : 1;
     S.turnId = data.coinWinner;
     S.round = data.round;
     S.scores = [0,0];
-    S.expectedPicks = 4; // Primer turno requiere 4 casillas
+    S.expectedPicks = 4;
     
     buildGame();
     show('game-screen');
-    
-    // Iniciar secuencia de animación
     startStartAnimation(data.coinWinner === socket.id ? S.myTeam : (S.myTeam === 'red' ? 'blue' : 'red'));
 });
 
@@ -383,27 +370,20 @@ function startStartAnimation(winnerTeam) {
     const brain = document.getElementById('mm-brain');
     
     text.innerText = "PREPÁRATE";
-    
-    let count = 3;
-    countdown.innerText = count;
-    playTone(440, 'sine', 0.2);
+    let count = 3; countdown.innerText = count; playTone(440, 'sine', 0.2);
     
     const interval = setInterval(() => {
         count--;
         if (count > 0) {
-            countdown.innerText = count;
-            playTone(440, 'sine', 0.2);
+            countdown.innerText = count; playTone(440, 'sine', 0.2);
         } else if (count === 0) {
             clearInterval(interval);
-            countdown.innerText = "";
-            text.innerText = "SORTEO DE TURNO...";
-            brain.style.display = "block";
-            brain.classList.add('spin');
+            countdown.innerText = ""; text.innerText = "SORTEO DE TURNO...";
+            brain.style.display = "block"; brain.classList.add('spin');
             playTone(600, 'square', 1.0, 0.05);
             
             setTimeout(() => {
                 brain.classList.remove('spin');
-                // Colorear el cerebro según el ganador
                 brain.style.filter = winnerTeam === 'red' ? "drop-shadow(0 0 40px #ff2244)" : "drop-shadow(0 0 40px #00aaff)";
                 text.innerText = winnerTeam === 'red' ? "INICIA JUGADOR ROJO" : "INICIA JUGADOR AZUL";
                 text.style.color = winnerTeam === 'red' ? "var(--red)" : "var(--blue)";
@@ -411,9 +391,8 @@ function startStartAnimation(winnerTeam) {
                 
                 setTimeout(() => {
                     overlay.style.display = "none";
-                    text.style.color = "var(--cyan)"; // Reset
-                    brain.style.filter = "none";
-                    socket.emit('animation_ready'); // Avisar al servidor
+                    text.style.color = "var(--cyan)"; brain.style.filter = "none";
+                    socket.emit('animation_ready');
                     beginPick();
                 }, 2000);
             }, 1500);
@@ -424,21 +403,32 @@ function startStartAnimation(winnerTeam) {
 // ═══════════════════════════════════════
 // GAMEPLAY LÓGICA (SOCKETS)
 // ═══════════════════════════════════════
+
 socket.on('update_sequence', (data) => {
     S.sequence = data.sequence;
     S.turnId = data.nextTurn;
     S.expectedPicks = data.picksLeft || 1;
     
+    // CORRECCIÓN 2: Si el rival fue quien presionó el botón, mostramos el flash y sonido en nuestra pantalla
+    if (data.pickerId !== socket.id && data.lastPicked !== undefined) {
+        playCellSound(data.lastPicked);
+        flashCellFast(data.lastPicked);
+    }
+
     if (data.phase === 'input') {
-        beginInput();
+        // Damos un pequeño retraso para que alcance a brillar la última celda antes de cambiar a Input
+        setTimeout(() => beginInput(), 500);
     } else {
-        // Aún están en phase pick (el primer jugador seleccionando sus 4)
         if (S.turnId === socket.id) setSbar(`AÑADE ${S.expectedPicks} CASILLAS MÁS`, S.myTeam === 'red' ? 'var(--red)' : 'var(--blue)');
         renderSeq();
     }
 });
 
 socket.on('input_correct', (data) => {
+    // CORRECCIÓN 2: Mostrarle al rival el sonido del botón presionado correctamente
+    if (data.pickerId !== socket.id) {
+        playCellSound(data.cellIndex);
+    }
     flashCell(data.cellIndex, 'ok');
     S.inputIdx = data.inputIdx;
     renderSeq();
@@ -458,30 +448,20 @@ socket.on('phase_change', (data) => {
 socket.on('round_end', (data) => {
     playErrorSound();
     flashCell(data.failedCell, 'err');
-    
     const winnerName = data.winnerId === socket.id ? currentUser.username : (S.myTeam === 'red' ? S.p2 : S.p1);
     setSbar(`✗ INCORRECTO — ¡${winnerName} GANA LA RONDA!`, 'err');
     setTbanner(-1, "Ronda terminada", false);
-    
-    S.scores[0] = data.scores.red;
-    S.scores[1] = data.scores.blue;
-    updateDots();
-    
+    S.scores[0] = data.scores.red; S.scores[1] = data.scores.blue; updateDots();
     setTimeout(() => { clearAllLit(); }, 2000);
 });
 
 socket.on('new_round', (data) => {
-    S.round = data.round;
-    S.turnId = data.turn;
-    S.sequence = [];
-    S.expectedPicks = 4;
+    S.round = data.round; S.turnId = data.turn; S.sequence = []; S.expectedPicks = 4;
     document.getElementById('g-rnd').textContent = S.round;
     beginPick();
 });
 
-socket.on('game_over', (data) => {
-    showWin(data.winnerTeam === 'red' ? 0 : 1, data.winner);
-});
+socket.on('game_over', (data) => { showWin(data.winnerTeam === 'red' ? 0 : 1, data.winner); });
 
 // ═══════════════════════════════════════
 // FASES DEL CLIENTE
@@ -508,11 +488,8 @@ function handlePick(ci){
     playCellSound(ci);
     flashCellFast(ci);
     socket.emit('cell_picked', ci);
-    // Bloquear tablero temporalmente hasta que el server conteste si faltan más
     setBoardActive(-1); 
-    setTimeout(() => {
-        if(S.phase === 'pick' && S.turnId === socket.id) setBoardActive(S.myTurnIndex);
-    }, 100);
+    setTimeout(() => { if(S.phase === 'pick' && S.turnId === socket.id) setBoardActive(S.myTurnIndex); }, 100);
 }
 
 function beginInput(){
@@ -542,49 +519,34 @@ function handleInput(ci){
 // UI & TABLERO
 // ═══════════════════════════════════════
 function buildGame(){
-    document.getElementById('g-p1n').textContent=S.p1;
-    document.getElementById('g-p2n').textContent=S.p2;
+    document.getElementById('g-p1n').textContent=S.p1; document.getElementById('g-p2n').textContent=S.p2;
     document.getElementById('g-rnd').textContent=S.round;
-    const b=document.getElementById('b-shared');
-    b.innerHTML='';
-    for(let i=0;i<9;i++){
-        const d=document.createElement('div');
-        d.className=`cell`; d.dataset.c=i;
-        b.appendChild(d);
-    }
+    const b=document.getElementById('b-shared'); b.innerHTML='';
+    for(let i=0;i<9;i++){ const d=document.createElement('div'); d.className=`cell`; d.dataset.c=i; b.appendChild(d); }
     updateDots();
 }
 
 function setBoardActive(playerIndex){
-  const board = document.getElementById('b-shared');
-  const isActive = (playerIndex !== -1);
+  const board = document.getElementById('b-shared'); const isActive = (playerIndex !== -1);
   board.style.borderColor = playerIndex === 0 ? 'var(--red)' : playerIndex === 1 ? 'var(--blue)' : 'var(--border)';
   board.style.boxShadow = playerIndex === 0 ? '0 0 18px var(--red-d)' : playerIndex === 1 ? '0 0 18px var(--blue-d)' : 'none';
-  
   board.querySelectorAll('.cell').forEach(cell=>{
     const ci = parseInt(cell.dataset.c);
     cell.classList.toggle('click',isActive);
-    cell.onclick = isActive ? () => {
-      if(S.phase === 'pick') handlePick(ci);
-      else if(S.phase === 'input') handleInput(ci);
-    } : null;
+    cell.onclick = isActive ? () => { if(S.phase === 'pick') handlePick(ci); else if(S.phase === 'input') handleInput(ci); } : null;
   });
 }
 
 function updateDots(){
   const mk=(el,score)=>{el.innerHTML='';for(let i=0;i<3;i++){const d=document.createElement('div');d.className='dot'+(i<score?' on':'');el.appendChild(d);}};
-  mk(document.getElementById('g-p1d'),S.scores[0]);
-  mk(document.getElementById('g-p2d'),S.scores[1]);
+  mk(document.getElementById('g-p1d'),S.scores[0]); mk(document.getElementById('g-p2d'),S.scores[1]);
 }
 
 function renderSeq(){
   const row=document.getElementById('g-seq'); row.innerHTML='';
   S.sequence.forEach(({p},i)=>{
-    const ch=document.createElement('div');
-    const done=S.phase==='input'&&i<S.inputIdx;
-    ch.className=`chip p${p+1}${done?' done':''}`;
-    ch.textContent='⬡';
-    row.appendChild(ch);
+    const ch=document.createElement('div'); const done=S.phase==='input'&&i<S.inputIdx;
+    ch.className=`chip p${p+1}${done?' done':''}`; ch.textContent='⬡'; row.appendChild(ch);
   });
   document.getElementById('g-sl').textContent=S.sequence.length||'—';
 }
@@ -609,11 +571,9 @@ function flashCell(ci,type){ const el=getCell(ci); const cls=type==='ok'?'fok':'
 
 function showWin(wIndex, winnerName){
   playSuccessSound();
-  const col=wIndex===0?'var(--red)':'var(--blue)';
-  const glow=wIndex===0?'var(--red-g)':'var(--blue-g)';
+  const col=wIndex===0?'var(--red)':'var(--blue)'; const glow=wIndex===0?'var(--red-g)':'var(--blue-g)';
   document.getElementById('w-name').textContent=winnerName;
-  document.getElementById('w-name').style.color=col;
-  document.getElementById('w-name').style.textShadow=`0 0 20px ${glow}`;
+  document.getElementById('w-name').style.color=col; document.getElementById('w-name').style.textShadow=`0 0 20px ${glow}`;
   document.getElementById('wn1').textContent=S.p1; document.getElementById('wn2').textContent=S.p2;
   document.getElementById('ws1').textContent=S.scores[0]; document.getElementById('ws2').textContent=S.scores[1];
   document.getElementById('wc1').className='fcard p1'+(wIndex===0?' win':'');
@@ -622,7 +582,7 @@ function showWin(wIndex, winnerName){
 }
 
 // ═══════════════════════════════════════
-// SISTEMA DE AUDIO (Web Audio API)
+// SISTEMA DE AUDIO
 // ═══════════════════════════════════════
 let audioCtx;
 function initAudio() {
@@ -643,7 +603,6 @@ function playCellSound(ci) { playTone(cellFreqs[ci], 'sine', 0.4, 0.15); }
 function playTurnChangeSound() { playTone(880, 'square', 0.1, 0.05); setTimeout(() => playTone(1046.50, 'square', 0.2, 0.05), 100); }
 function playErrorSound() { playTone(150, 'sawtooth', 0.5, 0.15); setTimeout(() => playTone(100, 'sawtooth', 0.5, 0.15), 150); }
 function playSuccessSound() { playTone(440, 'sine', 0.1, 0.1); setTimeout(() => playTone(554.37, 'sine', 0.1, 0.1), 100); setTimeout(() => playTone(659.25, 'sine', 0.2, 0.1), 200); }
-
 </script>
 </body>
 </html>
