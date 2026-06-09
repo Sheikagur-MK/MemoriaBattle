@@ -21,7 +21,7 @@ const UserSchema = new mongoose.Schema({
   brains:      { type: Number, default: 0 },
   wins:        { type: Number, default: 0 },
   gamesPlayed: { type: Number, default: 0 },
-  arenaLevel:  { type: Number, default: 1 }
+  createdAt:   { type: Date, default: Date.now }
 });
 const User = mongoose.model('User', UserSchema);
 
@@ -49,6 +49,10 @@ function tryStartMatch() {
     return;
   }
 
+  // Notificar que se encontró rival
+  p1_sock.emit('match_found');
+  p2_sock.emit('match_found');
+
   const gameId = `G${++counter}`;
   p1_sock.join(gameId);
   p2_sock.join(gameId);
@@ -66,17 +70,20 @@ function tryStartMatch() {
     round: 1,
     sequence: [],
     turn: coinWinner,
-    phase: 'pick'
+    phase: 'animating', // Esperar a que terminen la animación local
+    expectedPicks: 4    // El primer turno requiere 4 movimientos
   };
 
-  io.to(gameId).emit('game_start', {
-    gameId,
-    players: games[gameId].players,
-    coinWinner,
-    round: 1
-  });
-
-  console.log(`>>> [${gameId}] Partida iniciada: ${p1_sock.userData.username} vs ${p2_sock.userData.username}`);
+  // Pequeño delay para mostrar el "Cargando partida" antes de enviar el start
+  setTimeout(() => {
+    io.to(gameId).emit('game_start', {
+      gameId,
+      players: games[gameId].players,
+      coinWinner,
+      round: 1
+    });
+    console.log(`>>> [${gameId}] Partida iniciada: ${p1_sock.userData.username} vs ${p2_sock.userData.username}`);
+  }, 2000);
 }
 
 // ── LÓGICA DE PARTIDA ─────────────────────────────────────────────────────────
@@ -98,8 +105,15 @@ async function endGame(gameId, winnerId) {
   });
 
   try {
+    // Actualizar Ganador (+3)
     await User.updateOne({ username: winner.username }, { $inc: { brains: 3, gamesPlayed: 1, wins: 1 } });
-    if(loser) await User.updateOne({ username: loser.username }, { $inc: { gamesPlayed: 1 } });
+    
+    // Actualizar Perdedor (-1, asegurando que no baje de 0)
+    if(loser) {
+      const loserData = await User.findOne({ username: loser.username });
+      const newBrains = Math.max(0, loserData.brains - 1);
+      await User.updateOne({ username: loser.username }, { brains: newBrains, $inc: { gamesPlayed: 1 } });
+    }
   } catch(e) { console.error('DB Error:', e.message); }
 
   console.log(`>>> [${gameId}] FIN. Ganador: ${winner.username}`);
@@ -110,7 +124,6 @@ async function endGame(gameId, winnerId) {
 io.on('connection', sock => {
   console.log(`>>> +${sock.id}`);
 
-  // AUTENTICACIÓN
   sock.on('register', async ({ username, password }) => {
     try {
       await new User({ username: username.trim(), password: await bcrypt.hash(password, 10) }).save();
@@ -127,11 +140,16 @@ io.on('connection', sock => {
         return sock.emit('auth_result', { ok: false, msg: 'Credenciales incorrectas.' });
       }
       sock.userData = u;
-      sock.emit('auth_result', { 
-        ok: true, 
-        user: { username: u.username, brains: u.brains, arenaLevel: u.arenaLevel }
-      });
+      sock.emit('auth_result', { ok: true, user: { username: u.username, brains: u.brains } });
     } catch(e) { sock.emit('auth_result', { ok: false, msg: 'Error de conexión.' }); }
+  });
+
+  // LEADERBOARD
+  sock.on('request_leaderboard', async () => {
+    try {
+      const topPlayers = await User.find({}, 'username brains').sort({ brains: -1, createdAt: 1 }).limit(10);
+      sock.emit('leaderboard_data', topPlayers);
+    } catch(e) { console.error(e); }
   });
 
   // MATCHMAKING
@@ -144,28 +162,39 @@ io.on('connection', sock => {
 
   sock.on('leave_queue', () => { queue = queue.filter(id => id !== sock.id); });
 
-  // GAMEPLAY (1 TURNO = AÑADIR 1 CASILLA)
+  // CLIENTE TERMINÓ ANIMACIÓN
+  sock.on('animation_ready', () => {
+    const g = games[sock.currentGame];
+    if (g && g.phase === 'animating') g.phase = 'pick';
+  });
+
+  // GAMEPLAY (Ahora soporta múltiples picks si es el primer turno)
   sock.on('cell_picked', (cellIndex) => {
     const g = games[sock.currentGame];
     if (!g || g.turn !== sock.id || g.phase !== 'pick') return;
     
-    // Formato para que el cliente renderice el color correcto del chip (0=rojo, 1=azul)
     const playerIndex = g.players[sock.id].team === 'red' ? 0 : 1;
     g.sequence.push({ p: playerIndex, c: cellIndex });
-    
-    const otherPlayerId = Object.keys(g.players).find(id => id !== sock.id);
-    g.turn = otherPlayerId;
-    g.phase = 'input';
-    g.currentInputIdx = 0;
+    g.expectedPicks--;
 
-    io.to(sock.currentGame).emit('update_sequence', { sequence: g.sequence, nextTurn: g.turn, phase: g.phase });
+    if (g.expectedPicks <= 0) {
+        // Termina su fase de pick
+        const otherPlayerId = Object.keys(g.players).find(id => id !== sock.id);
+        g.turn = otherPlayerId;
+        g.phase = 'input';
+        g.currentInputIdx = 0;
+        io.to(sock.currentGame).emit('update_sequence', { sequence: g.sequence, nextTurn: g.turn, phase: g.phase });
+    } else {
+        // Aún le faltan picks (sólo en el turno 1)
+        io.to(sock.currentGame).emit('update_sequence', { sequence: g.sequence, nextTurn: g.turn, phase: g.phase, picksLeft: g.expectedPicks });
+    }
   });
 
   sock.on('cell_input', (cellIndex) => {
     const g = games[sock.currentGame];
     if (!g || g.turn !== sock.id || g.phase !== 'input') return;
 
-    const expectedCell = g.sequence[g.currentInputIdx].c; // Extraemos solo el índice de la casilla
+    const expectedCell = g.sequence[g.currentInputIdx].c;
 
     if (cellIndex === expectedCell) {
       g.currentInputIdx++;
@@ -174,7 +203,8 @@ io.on('connection', sock => {
       if (g.currentInputIdx >= g.sequence.length) {
         g.turn = sock.id; 
         g.phase = 'pick';
-        io.to(sock.currentGame).emit('phase_change', { nextTurn: g.turn, phase: g.phase });
+        g.expectedPicks = 1; // De aquí en adelante, solo agregan 1
+        io.to(sock.currentGame).emit('phase_change', { nextTurn: g.turn, phase: g.phase, picksLeft: 1 });
       }
     } else {
       const winnerId = Object.keys(g.players).find(id => id !== sock.id);
@@ -195,8 +225,9 @@ io.on('connection', sock => {
       } else {
         g.round++;
         g.sequence = [];
-        g.phase = 'pick';
+        g.phase = 'animating'; // Volvemos a esperar animación (opcional) o pasamos directo
         g.turn = winnerId; 
+        g.expectedPicks = 4; // Nueva ronda = 4 picks iniciales de nuevo
         setTimeout(() => {
           io.to(sock.currentGame).emit('new_round', { round: g.round, turn: g.turn });
         }, 3000);
