@@ -49,7 +49,6 @@ function tryStartMatch() {
     return;
   }
 
-  // Notificar que se encontró rival
   p1_sock.emit('match_found');
   p2_sock.emit('match_found');
 
@@ -70,11 +69,10 @@ function tryStartMatch() {
     round: 1,
     sequence: [],
     turn: coinWinner,
-    phase: 'animating', // Esperar a que terminen la animación local
-    expectedPicks: 4    // El primer turno requiere 4 movimientos
+    phase: 'animating',
+    expectedPicks: 4
   };
 
-  // Pequeño delay para mostrar el "Cargando partida" antes de enviar el start
   setTimeout(() => {
     io.to(gameId).emit('game_start', {
       gameId,
@@ -105,10 +103,7 @@ async function endGame(gameId, winnerId) {
   });
 
   try {
-    // Actualizar Ganador (+3)
     await User.updateOne({ username: winner.username }, { $inc: { brains: 3, gamesPlayed: 1, wins: 1 } });
-    
-    // Actualizar Perdedor (-1, asegurando que no baje de 0)
     if(loser) {
       const loserData = await User.findOne({ username: loser.username });
       const newBrains = Math.max(0, loserData.brains - 1);
@@ -144,7 +139,6 @@ io.on('connection', sock => {
     } catch(e) { sock.emit('auth_result', { ok: false, msg: 'Error de conexión.' }); }
   });
 
-  // LEADERBOARD
   sock.on('request_leaderboard', async () => {
     try {
       const topPlayers = await User.find({}, 'username brains').sort({ brains: -1, createdAt: 1 }).limit(10);
@@ -152,7 +146,6 @@ io.on('connection', sock => {
     } catch(e) { console.error(e); }
   });
 
-  // MATCHMAKING
   sock.on('join_queue', () => {
     if (!sock.userData || queue.includes(sock.id)) return;
     queue.push(sock.id);
@@ -162,13 +155,11 @@ io.on('connection', sock => {
 
   sock.on('leave_queue', () => { queue = queue.filter(id => id !== sock.id); });
 
-  // CLIENTE TERMINÓ ANIMACIÓN
   sock.on('animation_ready', () => {
     const g = games[sock.currentGame];
     if (g && g.phase === 'animating') g.phase = 'pick';
   });
 
-  // GAMEPLAY (Ahora soporta múltiples picks si es el primer turno)
   sock.on('cell_picked', (cellIndex) => {
     const g = games[sock.currentGame];
     if (!g || g.turn !== sock.id || g.phase !== 'pick') return;
@@ -178,15 +169,18 @@ io.on('connection', sock => {
     g.expectedPicks--;
 
     if (g.expectedPicks <= 0) {
-        // Termina su fase de pick
         const otherPlayerId = Object.keys(g.players).find(id => id !== sock.id);
         g.turn = otherPlayerId;
         g.phase = 'input';
         g.currentInputIdx = 0;
-        io.to(sock.currentGame).emit('update_sequence', { sequence: g.sequence, nextTurn: g.turn, phase: g.phase });
+        
+        io.to(sock.currentGame).emit('update_sequence', { 
+            sequence: g.sequence, nextTurn: g.turn, phase: g.phase, lastPicked: cellIndex, pickerId: sock.id 
+        });
     } else {
-        // Aún le faltan picks (sólo en el turno 1)
-        io.to(sock.currentGame).emit('update_sequence', { sequence: g.sequence, nextTurn: g.turn, phase: g.phase, picksLeft: g.expectedPicks });
+        io.to(sock.currentGame).emit('update_sequence', { 
+            sequence: g.sequence, nextTurn: g.turn, phase: g.phase, picksLeft: g.expectedPicks, lastPicked: cellIndex, pickerId: sock.id 
+        });
     }
   });
 
@@ -198,12 +192,12 @@ io.on('connection', sock => {
 
     if (cellIndex === expectedCell) {
       g.currentInputIdx++;
-      io.to(sock.currentGame).emit('input_correct', { cellIndex, inputIdx: g.currentInputIdx });
+      io.to(sock.currentGame).emit('input_correct', { cellIndex, inputIdx: g.currentInputIdx, pickerId: sock.id });
 
       if (g.currentInputIdx >= g.sequence.length) {
         g.turn = sock.id; 
         g.phase = 'pick';
-        g.expectedPicks = 1; // De aquí en adelante, solo agregan 1
+        g.expectedPicks = 1; 
         io.to(sock.currentGame).emit('phase_change', { nextTurn: g.turn, phase: g.phase, picksLeft: 1 });
       }
     } else {
@@ -225,9 +219,9 @@ io.on('connection', sock => {
       } else {
         g.round++;
         g.sequence = [];
-        g.phase = 'animating'; // Volvemos a esperar animación (opcional) o pasamos directo
+        g.phase = 'pick'; // CORRECCIÓN 1: Pasa directo a pick para no trabar el juego
         g.turn = winnerId; 
-        g.expectedPicks = 4; // Nueva ronda = 4 picks iniciales de nuevo
+        g.expectedPicks = 4; 
         setTimeout(() => {
           io.to(sock.currentGame).emit('new_round', { round: g.round, turn: g.turn });
         }, 3000);
