@@ -152,7 +152,40 @@ body::after{ content:'';position:fixed;inset:0; background:repeating-linear-grad
 .fcard .fsc{font-family:'Orbitron',monospace;font-size:36px;font-weight:900;color:var(--white);}
 
 @media (max-width: 800px) {
-    .lobby-container { grid-template-columns: 1fr; }
+    /* Desactivar el centrado vertical estricto para permitir scroll natural */
+    .screen {
+        justify-content: flex-start;
+        padding-top: 30px;
+        padding-bottom: 30px;
+    }
+    
+    /* Apilar las columnas del lobby y reducir márgenes */
+    .lobby-container { 
+        grid-template-columns: 1fr; 
+        padding: 10px;
+        gap: 15px;
+    }
+    
+    /* Achicar un poco los paneles para que quepa más info */
+    .panel {
+        padding: 15px;
+    }
+    
+    /* Reducir el logo en móvil para ahorrar espacio */
+    .logo {
+        font-size: clamp(20px, 6vw, 30px) !important;
+    }
+    
+    /* Ajustes para el botón de buscar partida en móvil */
+    #btn-search {
+        padding: 15px;
+        font-size: 16px;
+    }
+
+    /* Ajustar textos de animación de inicio */
+    .countdown { font-size: 80px; }
+    .mm-text { font-size: 16px; }
+    .brain-coin { font-size: 70px; }
 }
 </style>
 <script src="/socket.io/socket.io.js"></script>
