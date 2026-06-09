@@ -272,7 +272,63 @@ body::after{
 .screen.active>*:nth-child(6){animation-delay:.30s}
 .screen.active>*:nth-child(7){animation-delay:.36s}
 </style>
-<script src="/socket.io/socket.io.js"></script>
+<script src="/socket.io/socket.io.js">
+  const socket = io();
+let currentUser = null;
+
+// ── AUTENTICACIÓN ─────────────────────────────────────────────────────────────
+function register() {
+    const user = document.getElementById('auth-user').value;
+    const pass = document.getElementById('auth-pass').value;
+    if (user.length < 8) return document.getElementById('auth-msg').innerText = "Usuario debe tener min 8 caracteres";
+    socket.emit('register', { username: user, password: pass });
+}
+
+function login() {
+    const user = document.getElementById('auth-user').value;
+    const pass = document.getElementById('auth-pass').value;
+    socket.emit('login', { username: user, password: pass });
+}
+
+socket.on('auth_result', (res) => {
+    const msg = document.getElementById('auth-msg');
+    if (!res.ok) {
+        msg.style.color = "var(--red)";
+        msg.innerText = res.msg;
+    } else {
+        if (res.user) {
+            currentUser = res.user;
+            document.getElementById('lobby-username').innerText = currentUser.username.toUpperCase();
+            document.getElementById('lobby-brains').innerText = currentUser.brains;
+            document.getElementById('lobby-arena').innerText = currentUser.arenaLevel;
+            show('lobby-screen'); // Ir al lobby tras loguearse
+        } else {
+            msg.style.color = "var(--cyan)";
+            msg.innerText = res.msg; // Mensaje de registro exitoso
+        }
+    }
+});
+
+// ── MATCHMAKING ─────────────────────────────────────────────────────────────
+function searchMatch() {
+    const btn = document.getElementById('btn-search');
+    btn.innerText = "BUSCANDO RIVAL...";
+    btn.classList.replace('btn-red', 'btn-blue');
+    socket.emit('join_queue');
+}
+
+// Escuchar cuando el servidor encuentra una partida
+socket.on('game_start', (data) => {
+    S.p1 = Object.values(data.players).find(p => p.team === 'red').username;
+    S.p2 = Object.values(data.players).find(p => p.team === 'blue').username;
+    
+    // Configurar quién ganó la moneda desde el servidor
+    S.coinWinner = data.coinWinner === socket.id ? 0 : 1; 
+    
+    buildGame();
+    show('game-screen');
+    startRound();
+});
 </head>
 <body>
 <div class="grid-bg"></div>
