@@ -15,7 +15,7 @@
   --text:#c8e0ff; --dim:#3a5a7a; --white:#e8f4ff;
 }
 *{margin:0;padding:0;box-sizing:border-box;}
-html,body{width:100%;height:100%;overflow:hidden;}
+html,body{width:100%;height:100%;overflow-hidden;}
 body{ background:var(--bg); color:var(--text); font-family:'Share Tech Mono',monospace; position:relative; }
 body::before{ content:'';position:fixed;inset:0; background: radial-gradient(ellipse 80% 50% at 50% -10%,#001a3a,transparent 65%), radial-gradient(ellipse 40% 30% at 10% 100%,#1a0028,transparent 55%), radial-gradient(ellipse 40% 30% at 90% 100%,#001828,transparent 55%); pointer-events:none;z-index:0; }
 .grid-bg{ position:fixed;inset:0; background-image:linear-gradient(rgba(0,170,255,.025) 1px,transparent 1px),linear-gradient(90deg,rgba(0,170,255,.025) 1px,transparent 1px); background-size:44px 44px;pointer-events:none;z-index:0; }
@@ -25,11 +25,56 @@ body::after{ content:'';position:fixed;inset:0; background:repeating-linear-grad
 .screen{display:none;flex-direction:column;align-items:center;justify-content:center;width:100%;height:100%;gap:16px;padding:16px; overflow-y: auto;}
 .screen.active{display:flex;}
 
-/* ── LOGO & BUTTONS ── */
-.logo{font-family:'Orbitron',monospace;font-weight:900;font-size:clamp(22px,4vw,48px);letter-spacing:8px;text-align:center;color:var(--white);text-shadow:0 0 20px var(--blue-g),0 0 60px rgba(0,100,255,.25);}
-.logo .r{color:var(--red);text-shadow:0 0 20px var(--red-g);}
-.logo .b{color:var(--blue);text-shadow:0 0 20px var(--blue-g);}
+/* ── LOGO CON EFECTO DE RAYOS Y NEÓN ── */
+.logo {
+    font-family: 'Orbitron', monospace;
+    font-weight: 900;
+    font-size: clamp(22px, 4vw, 48px);
+    letter-spacing: 8px;
+    text-align: center;
+    color: var(--white);
+    display: inline-block;
+    /* Efecto de caída de rayo ocasional */
+    animation: lightning-strike 6s infinite;
+}
+.logo .r { 
+    color: var(--red); 
+    display: inline-block;
+    animation: pulse-red 2s infinite alternate; 
+}
+.logo .b { 
+    color: var(--blue); 
+    display: inline-block;
+    animation: pulse-blue 2s infinite alternate; 
+}
+
+/* Brillo constante pulsante */
+@keyframes pulse-red {
+    from { text-shadow: 0 0 10px var(--red-d); filter: drop-shadow(0 0 2px var(--red-d)); }
+    to { text-shadow: 0 0 20px var(--red), 0 0 40px var(--red-g); filter: drop-shadow(0 0 8px var(--red)); }
+}
+@keyframes pulse-blue {
+    from { text-shadow: 0 0 10px var(--blue-d); filter: drop-shadow(0 0 2px var(--blue-d)); }
+    to { text-shadow: 0 0 20px var(--blue), 0 0 40px var(--blue-g); filter: drop-shadow(0 0 8px var(--blue)); }
+}
+
+/* Destello eléctrico (Rayos) */
+@keyframes lightning-strike {
+    0%, 93%, 97%, 100% { filter: contrast(1) brightness(1); transform: scale(1); }
+    94% { 
+        filter: contrast(2.5) brightness(2.5) drop-shadow(0 0 30px var(--cyan)) drop-shadow(0 0 50px var(--white)); 
+        transform: scale(1.02) skewX(-2deg); 
+    }
+    95% { filter: contrast(0.5) brightness(0.5); transform: scale(0.98) translate(2px, -2px); }
+    96% { 
+        filter: contrast(3) brightness(3) drop-shadow(0 0 50px var(--cyan)) drop-shadow(0 0 80px #fff); 
+        transform: scale(1.03) skewX(2deg); 
+    }
+}
+
 .logo-sub{font-size:10px;letter-spacing:6px;color:var(--dim);text-align:center;margin-top:4px;}
+
+/* ── BUTTONS ── */
 .btn{font-family:'Orbitron',monospace;font-weight:700;font-size:12px;letter-spacing:3px;padding:13px 32px;border:1px solid;cursor:pointer;background:transparent;transition:all .2s;clip-path:polygon(8px 0%,100% 0%,calc(100% - 8px) 100%,0% 100%); text-transform: uppercase;}
 .btn-blue{color:var(--blue);border-color:var(--blue);box-shadow:0 0 12px var(--blue-d),inset 0 0 12px var(--blue-d);}
 .btn-blue:hover{background:var(--blue-d);box-shadow:0 0 28px var(--blue-g),inset 0 0 16px var(--blue-d);transform:translateY(-2px);}
@@ -77,8 +122,8 @@ body::after{ content:'';position:fixed;inset:0; background:repeating-linear-grad
 
 /* Matchmaking Overlay */
 #mm-overlay { position: fixed; inset: 0; background: rgba(3,5,16,0.95); z-index: 100; display: none; flex-direction: column; align-items: center; justify-content: center; text-align: center; }
-.mm-text { font-family: 'Orbitron'; font-size: 24px; color: var(--cyan); letter-spacing: 5px; animation: pulse 1s infinite alternate; margin-bottom: 20px; }
-@keyframes pulse { from { text-shadow: 0 0 10px var(--cyan-g); } to { text-shadow: 0 0 30px var(--cyan), 0 0 50px var(--cyan); } }
+.mm-text { font-family: 'Orbitron'; font-size: 24px; color: var(--cyan); letter-spacing: 5px; animation: pulse-mm 1s infinite alternate; margin-bottom: 20px; }
+@keyframes pulse-mm { from { text-shadow: 0 0 10px var(--cyan-g); } to { text-shadow: 0 0 30px var(--cyan), 0 0 50px var(--cyan); } }
 .countdown { font-family: 'Orbitron'; font-size: 120px; font-weight: 900; color: var(--white); text-shadow: 0 0 40px var(--white); }
 .brain-coin { font-size: 100px; display: none; filter: drop-shadow(0 0 20px #fff); }
 .brain-coin.spin { animation: flip 0.2s linear infinite; }
@@ -151,36 +196,22 @@ body::after{ content:'';position:fixed;inset:0; background:repeating-linear-grad
 .fcard.p1 .fn{color:var(--red);} .fcard.p2 .fn{color:var(--blue);}
 .fcard .fsc{font-family:'Orbitron',monospace;font-size:36px;font-weight:900;color:var(--white);}
 
+/* ── ADAPTACIÓN PARA MÓVILES ── */
 @media (max-width: 800px) {
     /* Desactivar el centrado vertical estricto para permitir scroll natural */
-    .screen {
-        justify-content: flex-start;
-        padding-top: 30px;
-        padding-bottom: 30px;
-    }
+    .screen { justify-content: flex-start; padding-top: 30px; padding-bottom: 30px; }
     
     /* Apilar las columnas del lobby y reducir márgenes */
-    .lobby-container { 
-        grid-template-columns: 1fr; 
-        padding: 10px;
-        gap: 15px;
-    }
+    .lobby-container { grid-template-columns: 1fr; padding: 10px; gap: 15px; }
     
     /* Achicar un poco los paneles para que quepa más info */
-    .panel {
-        padding: 15px;
-    }
+    .panel { padding: 15px; }
     
     /* Reducir el logo en móvil para ahorrar espacio */
-    .logo {
-        font-size: clamp(20px, 6vw, 30px) !important;
-    }
+    .logo { font-size: clamp(24px, 6vw, 36px); }
     
     /* Ajustes para el botón de buscar partida en móvil */
-    #btn-search {
-        padding: 15px;
-        font-size: 16px;
-    }
+    #btn-search { padding: 15px; font-size: 16px; }
 
     /* Ajustar textos de animación de inicio */
     .countdown { font-size: 80px; }
@@ -216,11 +247,11 @@ body::after{ content:'';position:fixed;inset:0; background:repeating-linear-grad
 </div>
 
 <div id="lobby-screen" class="screen">
-    <div class="logo" style="font-size:clamp(16px,3vw,32px); margin-bottom: 0;"><span class="r">MEM</span>ORIA <span class="b">BATTLE</span></div>
+    <div class="logo" style="margin-bottom: 0;"><span class="r">MEM</span>ORIA <span class="b">BATTLE</span></div>
     
     <div class="lobby-container">
         <div class="panel">
-            <h3>PERFIL DE PILOTO</h3>
+            <h3>PERFIL</h3>
             <div style="text-align: center; margin-top: 20px;">
                 <h2 id="lobby-username" style="font-family:'Orbitron'; color:var(--white); margin-bottom: 10px;">—</h2>
                 <div id="lobby-rank" class="rank-badge" style="margin-bottom: 15px;">—</div>
@@ -257,7 +288,7 @@ body::after{ content:'';position:fixed;inset:0; background:repeating-linear-grad
         <div class="panel">
             <h3>TOP 10 MUNDIAL</h3>
             <table class="lb-table" id="leaderboard-table">
-                <thead><tr><th>#</th><th>PILOTO</th><th style="text-align:right;">🧠</th></tr></thead>
+                <thead><tr><th>#</th><th>JUGADOR</th><th style="text-align:right;">🧠</th></tr></thead>
                 <tbody></tbody>
             </table>
         </div>
@@ -519,13 +550,12 @@ socket.on('new_round', (data) => {
 });
 
 socket.on('game_over', (data) => { 
-    // Actualizar perfil local al ganar/perder
     if (data.winner === currentUser.username) {
         currentUser.brains += 3;
     } else {
         currentUser.brains = Math.max(0, currentUser.brains - 1);
     }
-    updateProfileUI(); // Refresca en segundo plano tu nuevo rango/cerebros para cuando vuelvas
+    updateProfileUI(); 
     showWin(data.winnerTeam === 'red' ? 0 : 1, data.winner); 
 });
 
