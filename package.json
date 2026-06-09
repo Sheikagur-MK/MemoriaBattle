@@ -1,7 +1,7 @@
 {
-  "name": "banana-party-online",
+  "name": "memoria-battle-online",
   "version": "1.0.0",
-  "description": "Mario Party style .io game with animals",
+  "description": "Juego multijugador 1v1 de memoria en tiempo real",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
