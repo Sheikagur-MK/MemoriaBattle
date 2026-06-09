@@ -33,10 +33,31 @@ body::after{ content:'';position:fixed;inset:0; background:repeating-linear-grad
 .btn{font-family:'Orbitron',monospace;font-weight:700;font-size:12px;letter-spacing:3px;padding:13px 32px;border:1px solid;cursor:pointer;background:transparent;transition:all .2s;clip-path:polygon(8px 0%,100% 0%,calc(100% - 8px) 100%,0% 100%); text-transform: uppercase;}
 .btn-blue{color:var(--blue);border-color:var(--blue);box-shadow:0 0 12px var(--blue-d),inset 0 0 12px var(--blue-d);}
 .btn-blue:hover{background:var(--blue-d);box-shadow:0 0 28px var(--blue-g),inset 0 0 16px var(--blue-d);transform:translateY(-2px);}
-.btn-red{color:var(--red);border-color:var(--red);box-shadow:0 0 12px var(--red-d),inset 0 0 12px var(--red-d);}
-.btn-red:hover{background:var(--red-d);box-shadow:0 0 28px var(--red-g),inset 0 0 16px var(--red-d);transform:translateY(-2px);}
 .btn-gold{color:var(--gold);border-color:var(--gold);box-shadow:0 0 12px #ffcc0022,inset 0 0 12px #ffcc0011;}
 .btn-gold:hover{background:#ffcc0012;box-shadow:0 0 28px var(--gold-g);transform:translateY(-2px);}
+
+/* Botón Neón Buscar Partida */
+#btn-search {
+    width: 100%;
+    font-size: 18px;
+    padding: 20px;
+    background: rgba(0, 255, 238, 0.08);
+    border: 2px solid var(--cyan);
+    color: var(--white);
+    text-shadow: 0 0 10px var(--cyan);
+    box-shadow: 0 0 15px var(--cyan-g), inset 0 0 15px var(--cyan-g);
+    animation: neon-pulse 1.5s infinite alternate;
+    transition: all 0.3s ease;
+}
+#btn-search:hover {
+    background: rgba(0, 255, 238, 0.25);
+    box-shadow: 0 0 35px var(--cyan), inset 0 0 25px var(--cyan);
+    transform: translateY(-2px);
+}
+@keyframes neon-pulse {
+    from { box-shadow: 0 0 10px var(--cyan-g), inset 0 0 10px var(--cyan-g); }
+    to { box-shadow: 0 0 25px var(--cyan), inset 0 0 20px var(--cyan-g); }
+}
 
 /* ── LOBBY ── */
 .lobby-container { display: grid; grid-template-columns: 1fr 1.5fr 1fr; gap: 20px; width: 100%; max-width: 1100px; padding: 20px; }
@@ -178,7 +199,7 @@ body::after{ content:'';position:fixed;inset:0; background:repeating-linear-grad
         <div class="panel" style="text-align: center;">
             <h3>ARENA GLOBAL</h3>
             <p style="font-size: 11px; color: var(--dim); margin-bottom: 20px;">VICTORIA: +3 CEREBROS | DERROTA: -1 CEREBRO</p>
-            <button class="btn btn-cyan" onclick="searchMatch()" style="width: 100%; font-size: 18px; padding: 20px;">BUSCAR PARTIDA ONLINE</button>
+            <button id="btn-search" class="btn" onclick="searchMatch()">BUSCAR PARTIDA ONLINE</button>
             
             <div style="margin-top: 30px; text-align: left;">
                 <h4 style="font-family:'Orbitron'; font-size:11px; color:var(--white); margin-bottom:10px;">RANGOS DISPONIBLES:</h4>
@@ -239,7 +260,7 @@ body::after{ content:'';position:fixed;inset:0; background:repeating-linear-grad
     <div class="fcard p2" id="wc2"><div class="fn" id="wn2">P2</div><div class="fsc" id="ws2">0</div></div>
   </div>
   <div class="wbtns">
-    <button class="btn btn-blue" onclick="location.reload()">⬡ VOLVER AL LOBBY</button>
+    <button class="btn btn-blue" onclick="returnToLobby()">⬡ VOLVER AL LOBBY</button>
   </div>
 </div>
 
@@ -319,7 +340,7 @@ function updateProfileUI() {
     const rb = document.getElementById('lobby-rank');
     rb.innerText = rank.name.toUpperCase();
     rb.style.color = rank.color; rb.style.borderColor = rank.color; rb.style.backgroundColor = rank.bg;
-    if (rank.shadow) rb.style.boxShadow = rank.shadow;
+    if (rank.shadow) rb.style.boxShadow = rank.shadow; else rb.style.boxShadow = 'none';
 }
 
 socket.on('leaderboard_data', (data) => {
@@ -331,6 +352,12 @@ socket.on('leaderboard_data', (data) => {
         tbody.appendChild(tr);
     });
 });
+
+function returnToLobby() {
+    initAudio();
+    socket.emit('request_leaderboard'); 
+    show('lobby-screen');
+}
 
 // ═══════════════════════════════════════
 // MATCHMAKING & ANIMACIONES
@@ -409,14 +436,12 @@ socket.on('update_sequence', (data) => {
     S.turnId = data.nextTurn;
     S.expectedPicks = data.picksLeft || 1;
     
-    // CORRECCIÓN 2: Si el rival fue quien presionó el botón, mostramos el flash y sonido en nuestra pantalla
     if (data.pickerId !== socket.id && data.lastPicked !== undefined) {
         playCellSound(data.lastPicked);
         flashCellFast(data.lastPicked);
     }
 
     if (data.phase === 'input') {
-        // Damos un pequeño retraso para que alcance a brillar la última celda antes de cambiar a Input
         setTimeout(() => beginInput(), 500);
     } else {
         if (S.turnId === socket.id) setSbar(`AÑADE ${S.expectedPicks} CASILLAS MÁS`, S.myTeam === 'red' ? 'var(--red)' : 'var(--blue)');
@@ -425,7 +450,6 @@ socket.on('update_sequence', (data) => {
 });
 
 socket.on('input_correct', (data) => {
-    // CORRECCIÓN 2: Mostrarle al rival el sonido del botón presionado correctamente
     if (data.pickerId !== socket.id) {
         playCellSound(data.cellIndex);
     }
@@ -461,7 +485,16 @@ socket.on('new_round', (data) => {
     beginPick();
 });
 
-socket.on('game_over', (data) => { showWin(data.winnerTeam === 'red' ? 0 : 1, data.winner); });
+socket.on('game_over', (data) => { 
+    // Actualizar perfil local al ganar/perder
+    if (data.winner === currentUser.username) {
+        currentUser.brains += 3;
+    } else {
+        currentUser.brains = Math.max(0, currentUser.brains - 1);
+    }
+    updateProfileUI(); // Refresca en segundo plano tu nuevo rango/cerebros para cuando vuelvas
+    showWin(data.winnerTeam === 'red' ? 0 : 1, data.winner); 
+});
 
 // ═══════════════════════════════════════
 // FASES DEL CLIENTE
@@ -606,4 +639,3 @@ function playSuccessSound() { playTone(440, 'sine', 0.1, 0.1); setTimeout(() => 
 </script>
 </body>
 </html>
-
