@@ -16,6 +16,45 @@
 * { margin:0; padding:0; box-sizing:border-box; scroll-behavior: smooth; }
 body { background:var(--bg); color:var(--text); font-family:'Share Tech Mono',monospace; overflow-x: hidden; }
 
+/* Bloquear scroll mientras se reproduce la intro */
+body.intro-active { overflow: hidden; }
+
+/* ── PANTALLA DE INTRODUCCIÓN (LOGO) ── */
+#intro-screen {
+  position: fixed;
+  inset: 0;
+  background-color: #d1d5db; /* Color claro para que se fusione con el fondo del video */
+  z-index: 9999;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  transition: opacity 1s ease-out, visibility 1s ease-out;
+}
+#intro-video {
+  width: 100%;
+  max-width: 1000px; /* Evita que el video sea gigante en pantallas muy anchas */
+  height: auto;
+}
+#skip-btn {
+  position: absolute;
+  bottom: 40px;
+  right: 40px;
+  background: rgba(0, 0, 0, 0.7);
+  color: var(--cyan);
+  border-color: var(--cyan);
+  font-size: 12px;
+  padding: 10px 20px;
+}
+#skip-btn:hover {
+  background: var(--cyan);
+  color: var(--bg);
+}
+.intro-hidden {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+
 /* ── FONDOS Y EFECTOS ── */
 body::before {
   content:''; position:fixed; inset:0; z-index:-2;
@@ -117,7 +156,15 @@ footer p { color: var(--dim); font-size: 12px; letter-spacing: 2px; }
 }
 </style>
 </head>
-<body>
+<body class="intro-active">
+
+<div id="intro-screen">
+  <video id="intro-video" autoplay muted playsinline>
+    <source src="Logo empresa.mp4" type="video/mp4">
+    Tu navegador no soporta el formato de video.
+  </video>
+  <button id="skip-btn" class="btn">SALTAR INTRO</button>
+</div>
 
 <div class="grid-bg"></div>
 
@@ -223,7 +270,41 @@ footer p { color: var(--dim); font-size: 12px; letter-spacing: 2px; }
 </footer>
 
 <script>
-// Lógica para revelar elementos al hacer scroll (Animación)
+// --- LÓGICA DEL VIDEO DE INTRODUCCIÓN ---
+const introScreen = document.getElementById('intro-screen');
+const introVideo = document.getElementById('intro-video');
+const skipBtn = document.getElementById('skip-btn');
+
+function ocultarIntro() {
+  introScreen.classList.add('intro-hidden'); // Aplica el desvanecimiento
+  document.body.classList.remove('intro-active'); // Devuelve el scroll a la página
+  introVideo.pause(); // Pausamos el video por rendimiento en caso de que se haya saltado
+  
+  // Después de 1 segundo (lo que dura la transición CSS), eliminamos el contenedor por completo
+  setTimeout(() => {
+    introScreen.style.display = 'none';
+  }, 1000);
+}
+
+// Escuchar evento cuando el video termine naturalmente
+if(introVideo) {
+  introVideo.addEventListener('ended', ocultarIntro);
+}
+
+// Escuchar el clic en el botón de saltar
+if(skipBtn) {
+  skipBtn.addEventListener('click', ocultarIntro);
+}
+
+// Sistema de seguridad: si el video por alguna razón falla o se queda cargando, quitar la pantalla tras 11 segundos
+setTimeout(() => {
+  if(document.body.classList.contains('intro-active')) {
+    ocultarIntro();
+  }
+}, 11000);
+
+
+// --- Lógica para revelar elementos al hacer scroll (Animación) ---
 const reveals = document.querySelectorAll('.reveal');
 function checkReveal() {
   const windowHeight = window.innerHeight;
