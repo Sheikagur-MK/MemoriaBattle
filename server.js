@@ -10,15 +10,17 @@ const app    = express();
 const server = http.createServer(app);
 const io     = new Server(server, { cors: { origin: '*' } });
 
-// ── BASE DE DATOS ─────────────────────────────────────────────────────────────
+// ── BASE DE DATOS: NUEVO ESQUEMA COMPETITIVO Y TIENDA ────────────────────────
 mongoose.connect(process.env.MONGODB_URI)
-  .then(() => console.log('>>> [DB] Conectado a Neo 2026 DB'))
+  .then(() => console.log('>>> [DB] Conectado a Rebaño Mortal DB'))
   .catch(e  => console.error('>>> [DB] Error:', e.message));
 
 const UserSchema = new mongoose.Schema({
   username:    { type: String, unique: true, required: true },
   password:    { type: String, required: true },
-  brains:      { type: Number, default: 0 },
+  elo:         { type: Number, default: 1000 }, // Base para Bronce 1
+  coins:       { type: Number, default: 0 },    // Monedas para la tienda
+  skin:        { type: String, default: 'default' }, // Aspecto equipado
   wins:        { type: Number, default: 0 },
   gamesPlayed: { type: Number, default: 0 },
   createdAt:   { type: Date, default: Date.now }
@@ -27,106 +29,47 @@ const User = mongoose.model('User', UserSchema);
 
 app.use(express.static(path.join(__dirname, 'public')));
 
-// ── ESTADO GLOBAL ─────────────────────────────────────────────────────────────
-let queue = [];
-let games = {};
-let counter = 0;
-
-// ── EMPAREJAMIENTO (MATCHMAKING 1v1) ──────────────────────────────────────────
-function tryStartMatch() {
-  if (queue.length < 2) return;
-  
-  const p1_id = queue.shift();
-  const p2_id = queue.shift();
-  
-  const p1_sock = io.sockets.sockets.get(p1_id);
-  const p2_sock = io.sockets.sockets.get(p2_id);
-
-  if (!p1_sock || !p2_sock) {
-    if (p1_sock) queue.push(p1_id);
-    if (p2_sock) queue.push(p2_id);
-    return;
-  }
-
-  p1_sock.emit('match_found');
-  p2_sock.emit('match_found');
-
-  const gameId = `G${++counter}`;
-  p1_sock.join(gameId);
-  p2_sock.join(gameId);
-  p1_sock.currentGame = gameId;
-  p2_sock.currentGame = gameId;
-
-  const coinWinner = Math.random() < 0.5 ? p1_sock.id : p2_sock.id;
-
-  games[gameId] = {
-    id: gameId,
-    players: {
-      [p1_id]: { id: p1_id, username: p1_sock.userData.username, team: 'red', score: 0 },
-      [p2_id]: { id: p2_id, username: p2_sock.userData.username, team: 'blue', score: 0 }
-    },
-    round: 1,
-    sequence: [],
-    turn: coinWinner,
-    phase: 'animating',
-    expectedPicks: 4
-  };
-
-  setTimeout(() => {
-    io.to(gameId).emit('game_start', {
-      gameId,
-      players: games[gameId].players,
-      coinWinner,
-      round: 1
-    });
-    console.log(`>>> [${gameId}] Partida iniciada: ${p1_sock.userData.username} vs ${p2_sock.userData.username}`);
-  }, 2000);
+// ── SISTEMA DE RANGOS (ELO) ───────────────────────────────────────────────────
+function getRankInfo(elo) {
+  // Lógica de rangos: Cada 100 puntos subes de división. Cada 300 pasas de liga.
+  if (elo < 1100) return 'Bronce 1';
+  if (elo < 1200) return 'Bronce 2';
+  if (elo < 1300) return 'Bronce 3';
+  if (elo < 1400) return 'Plata 1';
+  if (elo < 1500) return 'Plata 2';
+  if (elo < 1600) return 'Plata 3';
+  if (elo < 1700) return 'Oro 1';
+  if (elo < 1800) return 'Oro 2';
+  if (elo < 1900) return 'Oro 3';
+  if (elo < 2000) return 'Platino 1';
+  if (elo < 2200) return 'Diamante 1';
+  return 'Master';
 }
 
-// ── LÓGICA DE PARTIDA ─────────────────────────────────────────────────────────
-async function endGame(gameId, winnerId) {
-  const g = games[gameId];
-  if (!g) return;
+// ── GESTOR DE SALAS (10 SALAS MAX 50 JUGADORES) ───────────────────────────────
+const ROOMS = [];
+const MAX_PLAYERS = 50;
 
-  const winner = g.players[winnerId];
-  const loserId = Object.keys(g.players).find(id => id !== winnerId);
-  const loser = g.players[loserId];
-
-  io.to(gameId).emit('game_over', { 
-    winner: winner.username, 
-    winnerTeam: winner.team,
-    scores: { 
-      red: Object.values(g.players).find(p => p.team === 'red').score, 
-      blue: Object.values(g.players).find(p => p.team === 'blue').score 
-    }
+// Inicializamos 5 salas Casuales y 5 Competitivas
+for (let i = 1; i <= 10; i++) {
+  ROOMS.push({
+    id: `Sala-${i}`,
+    type: i <= 5 ? 'casual' : 'competitiva',
+    players: {},
+    playerCount: 0
   });
-
-  try {
-    await User.updateOne({ username: winner.username }, { $inc: { brains: 3, gamesPlayed: 1, wins: 1 } });
-    if(loser) {
-      const loserData = await User.findOne({ username: loser.username });
-      const newBrains = Math.max(0, loserData.brains - 1);
-      await User.updateOne({ username: loser.username }, { brains: newBrains, $inc: { gamesPlayed: 1 } });
-    }
-  } catch(e) { console.error('DB Error:', e.message); }
-
-  console.log(`>>> [${gameId}] FIN. Ganador: ${winner.username}`);
-  delete games[gameId];
 }
 
-// ── SOCKET.IO ─────────────────────────────────────────────────────────────────
+function getAvailableRoom(type) {
+  return ROOMS.find(r => r.type === type && r.playerCount < MAX_PLAYERS);
+}
+
+// ── LÓGICA MULTIJUGADOR (SOCKET.IO) ───────────────────────────────────────────
 io.on('connection', sock => {
-  console.log(`>>> +${sock.id}`);
+  console.log(`>>> + Jugador conectado: ${sock.id}`);
+  let currentRoom = null;
 
-  sock.on('register', async ({ username, password }) => {
-    try {
-      await new User({ username: username.trim(), password: await bcrypt.hash(password, 10) }).save();
-      sock.emit('auth_result', { ok: true, msg: 'Piloto registrado. Inicia sesión.' });
-    } catch(e) {
-      sock.emit('auth_result', { ok: false, msg: e.code === 11000 ? 'El usuario ya existe.' : 'Error interno.' });
-    }
-  });
-
+  // 1. AUTENTICACIÓN
   sock.on('login', async ({ username, password }) => {
     try {
       const u = await User.findOne({ username: username.trim() });
@@ -134,113 +77,141 @@ io.on('connection', sock => {
         return sock.emit('auth_result', { ok: false, msg: 'Credenciales incorrectas.' });
       }
       sock.userData = u;
-      sock.emit('auth_result', { ok: true, user: { username: u.username, brains: u.brains } });
+      sock.emit('auth_result', { 
+        ok: true, 
+        user: { 
+          username: u.username, 
+          elo: u.elo, 
+          rank: getRankInfo(u.elo),
+          coins: u.coins,
+          skin: u.skin 
+        } 
+      });
     } catch(e) { sock.emit('auth_result', { ok: false, msg: 'Error de conexión.' }); }
   });
 
-  sock.on('request_leaderboard', async () => {
+  sock.on('register', async ({ username, password }) => {
     try {
-      const topPlayers = await User.find({}, 'username brains').sort({ brains: -1, createdAt: 1 }).limit(10);
-      sock.emit('leaderboard_data', topPlayers);
-    } catch(e) { console.error(e); }
+      await new User({ username: username.trim(), password: await bcrypt.hash(password, 10) }).save();
+      sock.emit('auth_result', { ok: true, msg: 'Cuenta creada. Inicia sesión.' });
+    } catch(e) {
+      sock.emit('auth_result', { ok: false, msg: e.code === 11000 ? 'El usuario ya existe.' : 'Error interno.' });
+    }
   });
 
-  sock.on('join_queue', () => {
-    if (!sock.userData || queue.includes(sock.id)) return;
-    queue.push(sock.id);
-    sock.emit('queue_status', { msg: 'Buscando rival...' });
-    tryStartMatch();
-  });
-
-  sock.on('leave_queue', () => { queue = queue.filter(id => id !== sock.id); });
-
-  sock.on('animation_ready', () => {
-    const g = games[sock.currentGame];
-    if (g && g.phase === 'animating') g.phase = 'pick';
-  });
-
-  sock.on('cell_picked', (cellIndex) => {
-    const g = games[sock.currentGame];
-    if (!g || g.turn !== sock.id || g.phase !== 'pick') return;
+  // 2. MATCHMAKING Y LOBBY
+  sock.on('join_match', ({ mode }) => { // mode = 'casual' | 'competitiva'
+    if (!sock.userData) return;
     
-    const playerIndex = g.players[sock.id].team === 'red' ? 0 : 1;
-    g.sequence.push({ p: playerIndex, c: cellIndex });
-    g.expectedPicks--;
-
-    if (g.expectedPicks <= 0) {
-        const otherPlayerId = Object.keys(g.players).find(id => id !== sock.id);
-        g.turn = otherPlayerId;
-        g.phase = 'input';
-        g.currentInputIdx = 0;
-        
-        io.to(sock.currentGame).emit('update_sequence', { 
-            sequence: g.sequence, nextTurn: g.turn, phase: g.phase, lastPicked: cellIndex, pickerId: sock.id 
-        });
-    } else {
-        io.to(sock.currentGame).emit('update_sequence', { 
-            sequence: g.sequence, nextTurn: g.turn, phase: g.phase, picksLeft: g.expectedPicks, lastPicked: cellIndex, pickerId: sock.id 
-        });
+    const room = getAvailableRoom(mode);
+    if (!room) {
+      return sock.emit('room_full', { msg: 'Todos los servidores están llenos.' });
     }
+
+    currentRoom = room;
+    sock.join(room.id);
+    
+    // Registrar jugador en la sala
+    room.players[sock.id] = {
+      id: sock.id,
+      username: sock.userData.username,
+      skin: sock.userData.skin,
+      x: Math.random() * 2000, // Spawn aleatorio en mapa grande
+      y: Math.random() * 2000,
+      pulling: false,
+      score: 0,
+      isDead: false
+    };
+    room.playerCount++;
+
+    // Enviar estado de la sala al nuevo jugador
+    sock.emit('game_start', { 
+      roomId: room.id, 
+      mode: room.type, 
+      players: room.players 
+    });
+
+    // Avisar a los demás que alguien entró
+    sock.to(room.id).emit('player_joined', room.players[sock.id]);
+    console.log(`>>> [${room.id}] ${sock.userData.username} se unió. (${room.playerCount}/${MAX_PLAYERS})`);
   });
 
-  sock.on('cell_input', (cellIndex) => {
-    const g = games[sock.currentGame];
-    if (!g || g.turn !== sock.id || g.phase !== 'input') return;
+  // 3. FÍSICAS DEL SWARM Y MOVIMIENTO (TICK RATE)
+  sock.on('player_update', (data) => {
+    if (!currentRoom || !currentRoom.players[sock.id] || currentRoom.players[sock.id].isDead) return;
+    
+    // Actualizamos posición y estado magnético
+    const p = currentRoom.players[sock.id];
+    p.x = data.x;
+    p.y = data.y;
+    p.pulling = data.pulling;
 
-    const expectedCell = g.sequence[g.currentInputIdx].c;
+    // Retransmitimos a los demás jugadores de la sala
+    sock.to(currentRoom.id).emit('player_moved', {
+      id: sock.id,
+      x: p.x,
+      y: p.y,
+      pulling: p.pulling
+    });
+  });
 
-    if (cellIndex === expectedCell) {
-      g.currentInputIdx++;
-      io.to(sock.currentGame).emit('input_correct', { cellIndex, inputIdx: g.currentInputIdx, pickerId: sock.id });
+  // Cuando un jugador suelta el botón (Explosión Kinética)
+  sock.on('kinetic_blast', (data) => {
+    if (!currentRoom) return;
+    // Retransmitimos la explosión para que los clientes calculen el impacto en el enjambre
+    sock.to(currentRoom.id).emit('enemy_blast', { id: sock.id, x: data.x, y: data.y });
+  });
 
-      if (g.currentInputIdx >= g.sequence.length) {
-        g.turn = sock.id; 
-        g.phase = 'pick';
-        g.expectedPicks = 1; 
-        io.to(sock.currentGame).emit('phase_change', { nextTurn: g.turn, phase: g.phase, picksLeft: 1 });
-      }
-    } else {
-      const winnerId = Object.keys(g.players).find(id => id !== sock.id);
-      g.players[winnerId].score++;
+  // 4. COMBATE Y ELO
+  sock.on('player_killed', async ({ victimId }) => {
+    if (!currentRoom) return;
+    
+    const killer = currentRoom.players[sock.id];
+    const victim = currentRoom.players[victimId];
+
+    if (killer && victim && !victim.isDead) {
+      victim.isDead = true;
+      killer.score += 100;
       
-      const redScore = Object.values(g.players).find(p => p.team === 'red').score;
-      const blueScore = Object.values(g.players).find(p => p.team === 'blue').score;
+      io.to(currentRoom.id).emit('kill_feed', { killer: killer.username, victim: victim.username });
 
-      io.to(sock.currentGame).emit('round_end', { 
-        winnerId, 
-        loserId: sock.id,
-        scores: { red: redScore, blue: blueScore },
-        failedCell: cellIndex
-      });
+      // Si es competitiva, actualizamos Elo en DB
+      if (currentRoom.type === 'competitiva') {
+        try {
+          const killerDB = await User.findOne({ username: killer.username });
+          const victimDB = await User.findOne({ username: victim.username });
+          
+          // Cálculo simple de ELO (+25 ganar, -15 perder)
+          killerDB.elo += 25;
+          killerDB.coins += 10; // Gana monedas para la tienda
+          killerDB.wins += 1;
+          killerDB.gamesPlayed += 1;
+          
+          victimDB.elo = Math.max(0, victimDB.elo - 15);
+          victimDB.gamesPlayed += 1;
 
-      if (g.players[winnerId].score >= 3) {
-        endGame(sock.currentGame, winnerId);
-      } else {
-        g.round++;
-        g.sequence = [];
-        g.phase = 'pick'; // CORRECCIÓN 1: Pasa directo a pick para no trabar el juego
-        g.turn = winnerId; 
-        g.expectedPicks = 4; 
-        setTimeout(() => {
-          io.to(sock.currentGame).emit('new_round', { round: g.round, turn: g.turn });
-        }, 3000);
+          await killerDB.save();
+          await victimDB.save();
+          
+          // Avisar a la víctima
+          io.to(victim.id).emit('elo_updated', { elo: victimDB.elo, rank: getRankInfo(victimDB.elo) });
+          // Avisar al asesino
+          sock.emit('elo_updated', { elo: killerDB.elo, rank: getRankInfo(killerDB.elo), coins: killerDB.coins });
+        } catch(e) { console.error('Error actualizando ELO:', e); }
       }
     }
   });
 
+  // 5. DESCONEXIÓN
   sock.on('disconnect', () => {
-    console.log(`>>> -${sock.id}`);
-    queue = queue.filter(id => id !== sock.id);
-    const g = games[sock.currentGame];
-    if (g) {
-      const winnerId = Object.keys(g.players).find(id => id !== sock.id);
-      if (winnerId) {
-        io.to(sock.currentGame).emit('player_disconnected', { msg: 'El rival se ha desconectado.' });
-        endGame(sock.currentGame, winnerId);
-      }
+    console.log(`>>> - Jugador desconectado: ${sock.id}`);
+    if (currentRoom) {
+      delete currentRoom.players[sock.id];
+      currentRoom.playerCount--;
+      io.to(currentRoom.id).emit('player_left', sock.id);
     }
   });
 });
 
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, '0.0.0.0', () => console.log(`>>> MEMORIA BATTLE ONLINE :${PORT}`));
+server.listen(PORT, '0.0.0.0', () => console.log(`>>> SERVIDOR REBAÑO MORTAL INICIADO EN EL PUERTO :${PORT}`));
