@@ -3,12 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Rebaño Mortal - Lobby</title>
-    <!-- Cargamos Socket.io -->
+    <title>Rebaño Mortal - Inicio</title>
     <script src="/socket.io/socket.io.js"></script>
     <style>
         :root {
-            --bg-color: #0b0f19;
+            --bg-color: #050510;
             --panel-bg: #1a2235;
             --primary: #3b82f6;
             --primary-hover: #2563eb;
@@ -20,64 +19,62 @@
         body, html {
             margin: 0; padding: 0; width: 100%; height: 100%;
             background: var(--bg-color); color: var(--text);
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            font-family: 'Segoe UI', sans-serif;
             display: flex; justify-content: center; align-items: center;
+            background-image: radial-gradient(circle at center, #111827 0%, #000 100%);
         }
         .container {
-            width: 90%; max-width: 1000px;
-            background: var(--panel-bg);
+            width: 95%; max-width: 1000px;
+            background: rgba(26, 34, 53, 0.9);
             border-radius: 12px; border: 2px solid var(--primary);
-            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.6);
+            box-shadow: 0 0 50px rgba(59, 130, 246, 0.3);
             overflow: hidden; display: flex; flex-direction: column;
+            backdrop-filter: blur(10px);
         }
         .header {
-            background: rgba(0, 0, 0, 0.3); padding: 20px;
+            background: rgba(0, 0, 0, 0.5); padding: 25px;
             text-align: center; border-bottom: 1px solid var(--primary);
         }
-        .header h1 { margin: 0; color: var(--primary); text-transform: uppercase; letter-spacing: 2px; }
+        .header h1 { margin: 0; color: var(--primary); text-transform: uppercase; letter-spacing: 4px; font-size: 32px; text-shadow: 0 0 10px var(--primary); }
         
         /* Pantallas */
-        #auth-screen, #lobby-screen { padding: 30px; }
-        #lobby-screen { display: none; }
+        #landing-screen, #auth-screen, #lobby-screen { padding: 40px; }
+        #auth-screen, #lobby-screen { display: none; }
+        
+        /* Landing Page: Historia y Tutorial */
+        .story-box { background: rgba(0,0,0,0.3); padding: 20px; border-left: 4px solid var(--primary); margin-bottom: 20px; font-size: 16px; line-height: 1.6; color: #cbd5e1; }
+        .tutorial-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 15px; margin-bottom: 30px; }
+        .tut-card { background: rgba(255,255,255,0.05); padding: 15px; border-radius: 8px; text-align: center; border: 1px solid #374151; }
+        .tut-card h3 { color: var(--accent); margin-top: 0; }
         
         /* Formularios */
-        .form-group { margin-bottom: 15px; }
+        .form-group { margin-bottom: 15px; max-width: 400px; margin-left: auto; margin-right: auto; }
         input {
-            width: 100%; padding: 12px; box-sizing: border-box;
-            background: rgba(255,255,255,0.05); border: 1px solid #4b5563;
+            width: 100%; padding: 14px; box-sizing: border-box;
+            background: rgba(0,0,0,0.4); border: 1px solid #4b5563;
             color: white; border-radius: 6px; font-size: 16px;
         }
+        input:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 10px rgba(59,130,246,0.5); }
         button {
             background: var(--primary); color: white; border: none;
-            padding: 12px 24px; font-size: 16px; border-radius: 6px;
+            padding: 14px 24px; font-size: 16px; border-radius: 6px;
             cursor: pointer; font-weight: bold; width: 100%; transition: 0.2s;
-            margin-bottom: 10px; text-transform: uppercase;
+            text-transform: uppercase; letter-spacing: 1px; margin-bottom: 10px;
         }
-        button:hover { background: var(--primary-hover); transform: translateY(-2px); }
+        button:hover { background: var(--primary-hover); transform: translateY(-2px); box-shadow: 0 5px 15px rgba(0,0,0,0.3); }
         .btn-success { background: var(--accent); }
         .btn-success:hover { background: #059669; }
         .btn-danger { background: var(--danger); }
         .btn-danger:hover { background: #dc2626; }
         
         /* Layout del Lobby */
-        .lobby-grid {
-            display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 20px;
-        }
-        @media (max-width: 768px) { .lobby-grid { grid-template-columns: 1fr; } }
+        .lobby-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 20px; }
+        @media (max-width: 768px) { .lobby-grid { grid-template-columns: 1fr; } .tutorial-grid { grid-template-columns: 1fr; } }
         
         .panel { background: rgba(0,0,0,0.2); padding: 20px; border-radius: 8px; border: 1px solid #374151; }
         .panel h2 { margin-top: 0; color: var(--primary); border-bottom: 1px solid #374151; padding-bottom: 10px; }
-        
-        /* Stats y Tienda */
         .stat-row { display: flex; justify-content: space-between; margin-bottom: 10px; font-size: 18px; }
-        .rank-badge { color: var(--gold); font-weight: bold; }
-        
-        .shop-item {
-            background: rgba(255,255,255,0.05); padding: 10px; border-radius: 6px;
-            display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;
-        }
-        .color-preview { width: 20px; height: 20px; border-radius: 50%; display: inline-block; vertical-align: middle; margin-right: 10px; }
-        
+        .rank-badge { color: var(--gold); font-weight: bold; text-shadow: 0 0 5px rgba(251,191,36,0.5); }
         #msg-box { color: var(--gold); text-align: center; margin-bottom: 15px; min-height: 20px; }
     </style>
 </head>
@@ -88,9 +85,35 @@
         <h1>Rebaño Mortal</h1>
     </div>
 
-    <!-- PANTALLA DE AUTENTICACIÓN -->
+    <!-- PANTALLA 1: LANDING & LORE -->
+    <div id="landing-screen">
+        <div class="story-box">
+            <strong>AÑO 2084.</strong> Las armas de fuego son obsoletas. La guerra ahora se libra controlando la materia oscura neutral esparcida por el universo. Eres un "Pastor Cinético". Tu núcleo tiene el poder de magnetizar miles de estas partículas letales. Atrae el caos, conviértelo en tu escudo y úsalo como arma para destruir a los núcleos rivales.
+        </div>
+        
+        <h2 style="text-align: center; color: var(--primary);">Manual de Combate</h2>
+        <div class="tutorial-grid">
+            <div class="tut-card">
+                <h3>1. Atrae</h3>
+                <p>Mantén presionado el clic o la pantalla. Tu campo magnético agrupará el enjambre neutral (azul) a tu alrededor usándolo de escudo.</p>
+            </div>
+            <div class="tut-card">
+                <h3>2. Dispara</h3>
+                <p>Suelta el clic de golpe. Emitirás un pulso cinético que disparará el enjambre a velocidades letales hacia tus enemigos.</p>
+            </div>
+            <div class="tut-card">
+                <h3>3. Sobrevive</h3>
+                <p>Las partículas solo hacen daño cuando viajan a gran velocidad. ¡Esquiva, absorbe el impacto con tu escudo y contraataca!</p>
+            </div>
+        </div>
+        <div style="max-width: 300px; margin: 0 auto;">
+            <button class="btn-success" onclick="showAuth()">Entrar al Sistema</button>
+        </div>
+    </div>
+
+    <!-- PANTALLA 2: AUTENTICACIÓN -->
     <div id="auth-screen">
-        <h2 style="text-align: center; color: #9ca3af;">Acceso al Sistema</h2>
+        <h2 style="text-align: center; color: #9ca3af; margin-bottom: 30px;">Identificación de Piloto</h2>
         <div id="auth-msg" id="msg-box"></div>
         <div class="form-group">
             <input type="text" id="username" placeholder="Nombre de Piloto" autocomplete="off">
@@ -98,14 +121,15 @@
         <div class="form-group">
             <input type="password" id="password" placeholder="Contraseña">
         </div>
-        <button onclick="login()">Iniciar Sesión</button>
-        <button class="btn-success" onclick="register()">Crear Nueva Cuenta</button>
+        <div style="max-width: 400px; margin: 0 auto;">
+            <button onclick="login()">Iniciar Sesión</button>
+            <button class="btn-success" style="background: transparent; border: 2px solid var(--accent); color: var(--accent);" onclick="register()">Crear Nueva Cuenta</button>
+        </div>
     </div>
 
-    <!-- PANTALLA DEL LOBBY -->
+    <!-- PANTALLA 3: LOBBY -->
     <div id="lobby-screen">
         <div class="lobby-grid">
-            
             <!-- Perfil y Stats -->
             <div class="panel">
                 <h2>Tu Perfil</h2>
@@ -115,39 +139,27 @@
                 <div class="stat-row"><span>Monedas:</span> <strong style="color: var(--gold);" id="lbl-coins">0 🪙</strong></div>
             </div>
 
-            <!-- Jugar y Tutorial -->
+            <!-- Jugar -->
             <div class="panel" style="text-align: center;">
                 <h2>Despliegue</h2>
-                <button class="btn-success" onclick="play('casual')">Partida Rápida (Sin ELO)</button>
-                <button class="btn-danger" onclick="play('competitiva')">Partida Competitiva (ELO)</button>
-                <hr style="border-color: #374151; margin: 20px 0;">
-                <h3 style="margin-bottom: 5px;">Tutorial Rápido:</h3>
-                <p style="font-size: 14px; color: #9ca3af; text-align: left;">
-                    - Usa <strong>Click/Toque prolongado</strong> para atraer a los puntos azules (tu rebaño).<br>
-                    - <strong>Suelta</strong> para dispararlos como proyectiles letales.<br>
-                    - ¡Sobrevive y elimina a otros jugadores para subir de rango!
-                </p>
+                <p style="font-size: 14px; color: #9ca3af;">Selecciona tu modo de batalla.</p>
+                <button class="btn-success" onclick="play('casual')">Partida Rápida (Práctica)</button>
+                <button class="btn-danger" onclick="play('competitiva')">Partida Competitiva (Ranked)</button>
             </div>
 
-            <!-- Tienda (Estética) -->
+            <!-- Tienda -->
             <div class="panel">
-                <h2>Tienda de Núcleos</h2>
-                <p style="font-size: 13px; color: #9ca3af; margin-top: 0;">(Próximamente funcional)</p>
-                
-                <div class="shop-item">
-                    <div><span class="color-preview" style="background: #34d399;"></span>Verde Básico</div>
-                    <strong>Equipado</strong>
+                <h2>Arsenal Estético</h2>
+                <p style="font-size: 13px; color: #9ca3af; margin-top: 0;">Gana monedas en partidas competitivas.</p>
+                <div style="background: rgba(255,255,255,0.05); padding: 10px; border-radius: 6px; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center;">
+                    <div><span style="width: 15px; height: 15px; border-radius: 50%; background: #10b981; display: inline-block; margin-right: 10px;"></span>Básico</div>
+                    <span style="color: var(--primary);">Equipado</span>
                 </div>
-                <div class="shop-item">
-                    <div><span class="color-preview" style="background: #f472b6;"></span>Rosa Neón</div>
-                    <button style="width: auto; padding: 5px 10px; margin: 0; font-size: 12px;">50 🪙</button>
-                </div>
-                <div class="shop-item">
-                    <div><span class="color-preview" style="background: #c084fc;"></span>Materia Oscura</div>
-                    <button style="width: auto; padding: 5px 10px; margin: 0; font-size: 12px;">150 🪙</button>
+                <div style="background: rgba(255,255,255,0.05); padding: 10px; border-radius: 6px; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center;">
+                    <div><span style="width: 15px; height: 15px; border-radius: 50%; background: #f472b6; display: inline-block; margin-right: 10px;"></span>Rosa Letal</div>
+                    <span style="color: var(--gold);">50 🪙</span>
                 </div>
             </div>
-
         </div>
     </div>
 </div>
@@ -156,19 +168,19 @@
     const socket = io();
     const authMsg = document.getElementById('auth-msg');
 
-    // Funciones de Autenticación
+    function showAuth() {
+        document.getElementById('landing-screen').style.display = 'none';
+        document.getElementById('auth-screen').style.display = 'block';
+    }
+
     function getCredentials() {
-        return {
-            username: document.getElementById('username').value.trim(),
-            password: document.getElementById('password').value
-        };
+        return { username: document.getElementById('username').value.trim(), password: document.getElementById('password').value };
     }
 
     function login() {
         const creds = getCredentials();
         if(!creds.username || !creds.password) return showMsg('Faltan datos');
         socket.emit('login', creds);
-        // Guardamos temporalmente para pasarlos a juego.html
         sessionStorage.setItem('tempUser', creds.username);
         sessionStorage.setItem('tempPass', creds.password);
     }
@@ -184,30 +196,23 @@
         authMsg.innerText = msg;
     }
 
-    // Respuestas del Servidor
     socket.on('auth_result', (data) => {
         if (!data.ok) {
             showMsg(data.msg, true);
         } else if (data.user) {
-            // Login Exitoso: Mostrar Lobby
             document.getElementById('auth-screen').style.display = 'none';
             document.getElementById('lobby-screen').style.display = 'block';
-            
-            // Llenar Datos
             document.getElementById('lbl-username').innerText = data.user.username;
             document.getElementById('lbl-rank').innerText = data.user.rank;
             document.getElementById('lbl-elo').innerText = data.user.elo;
             document.getElementById('lbl-coins').innerText = data.user.coins + ' 🪙';
         } else {
-            showMsg(data.msg, false); // Mensaje de registro exitoso
+            showMsg(data.msg, false);
         }
     });
 
-    // Iniciar el Juego (Redirección al cliente de físicas)
     function play(mode) {
-        // Guardamos el modo seleccionado en sessionStorage
         sessionStorage.setItem('gameMode', mode);
-        // Redirigimos al archivo del motor del juego
         window.location.href = 'juego.html';
     }
 </script>
