@@ -3,37 +3,50 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Rebaño Mortal - Combate Orbital</title>
+    <title>Rebaño Mortal - Combate</title>
     <script src="/socket.io/socket.io.js"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@700&display=swap');
-        body, html { margin: 0; padding: 0; width: 100%; height: 100%; background: #010103; overflow: hidden; font-family: 'Segoe UI', sans-serif; user-select: none; }
+        body, html { margin: 0; padding: 0; width: 100%; height: 100%; background: #010103; overflow: hidden; font-family: 'Segoe UI', sans-serif; user-select: none; touch-action: none; -webkit-user-select: none; }
         canvas { display: block; width: 100%; height: 100%; }
         
-        #hud { position: absolute; top: 20px; left: 20px; color: white; pointer-events: none; z-index: 10; text-shadow: 0 2px 10px rgba(0,0,0,1); }
-        .hud-text { font-size: 16px; font-weight: bold; margin-bottom: 5px; text-transform: uppercase; letter-spacing: 1px; color: #94a3b8; }
-        .highlight { color: #00f0ff; font-size: 24px; font-family: 'Orbitron'; }
+        #hud { position: absolute; top: 15px; left: 15px; color: white; pointer-events: none; z-index: 10; text-shadow: 0 2px 5px rgba(0,0,0,1); }
+        .hud-text { font-size: 14px; font-weight: bold; margin-bottom: 5px; text-transform: uppercase; color: #94a3b8; }
+        .highlight { color: #00f0ff; font-size: 20px; font-family: 'Orbitron'; }
         
-        /* Interfaz de Boost (Turbo) */
-        #boost-ui { position: absolute; bottom: 40px; left: 50%; transform: translateX(-50%); width: 300px; text-align: center; pointer-events: none; z-index: 10; }
-        #boost-label { color: #fff; font-family: 'Orbitron'; font-size: 14px; margin-bottom: 5px; letter-spacing: 2px; }
-        #boost-bar-container { width: 100%; height: 15px; background: rgba(255,255,255,0.1); border: 2px solid #00f0ff; border-radius: 10px; overflow: hidden; box-shadow: 0 0 15px rgba(0,240,255,0.4); }
+        /* Interfaz PC (Oculta en móvil) */
+        #boost-ui { position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%); width: 250px; text-align: center; pointer-events: none; z-index: 10; }
+        #boost-label { color: #fff; font-family: 'Orbitron'; font-size: 12px; margin-bottom: 5px; }
+        #boost-bar-container { width: 100%; height: 12px; background: rgba(255,255,255,0.1); border: 2px solid #00f0ff; border-radius: 10px; overflow: hidden; }
         #boost-bar { width: 100%; height: 100%; background: #00f0ff; transition: width 0.1s linear; }
         
-        #kill-feed { position: absolute; top: 20px; right: 20px; color: white; text-align: right; pointer-events: none; font-size: 14px; z-index: 10; font-family: 'Orbitron'; }
-        .feed-item { margin-bottom: 5px; background: rgba(10, 15, 30, 0.8); padding: 8px 12px; border-radius: 4px; border-right: 3px solid #ff003c; }
+        #kill-feed { position: absolute; top: 15px; right: 15px; color: white; text-align: right; pointer-events: none; font-size: 12px; z-index: 10; font-family: 'Orbitron'; }
+        .feed-item { margin-bottom: 5px; background: rgba(10, 15, 30, 0.8); padding: 6px 10px; border-radius: 4px; border-right: 3px solid #ff003c; }
         
         #death-screen { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(1, 1, 3, 0.9); display: none; flex-direction: column; justify-content: center; align-items: center; z-index: 20; backdrop-filter: blur(10px); }
-        #death-screen h1 { color: #ff003c; font-family: 'Orbitron'; font-size: 4rem; text-transform: uppercase; margin-bottom: 10px; text-shadow: 0 0 30px #ff003c; }
-        button { background: #00f0ff; color: #000; border: none; padding: 15px 30px; font-size: 1.2rem; border-radius: 8px; cursor: pointer; font-family: 'Orbitron'; font-weight: bold; margin-top: 30px; text-transform: uppercase; }
-        button:hover { background: #fff; box-shadow: 0 0 30px rgba(0,240,255,0.8); }
+        #death-screen h1 { color: #ff003c; font-family: 'Orbitron'; font-size: 3rem; text-transform: uppercase; margin-bottom: 10px; text-shadow: 0 0 20px #ff003c; text-align: center; }
+        button { background: #00f0ff; color: #000; border: none; padding: 15px 30px; font-size: 1rem; border-radius: 8px; cursor: pointer; font-family: 'Orbitron'; font-weight: bold; margin-top: 20px; text-transform: uppercase; }
+        
+        /* ====== CONTROLES MÓVILES ====== */
+        #mobile-controls { display: none; position: absolute; bottom: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 15; }
+        .joystick-zone { position: absolute; bottom: 30px; width: 130px; height: 130px; background: rgba(0, 240, 255, 0.1); border: 2px solid rgba(0, 240, 255, 0.3); border-radius: 50%; }
+        #joystick-left { left: 30px; }
+        #joystick-right { right: 30px; border-color: rgba(255, 0, 60, 0.3); background: rgba(255, 0, 60, 0.1); }
+        .knob { position: absolute; top: 50%; left: 50%; width: 50px; height: 50px; border-radius: 50%; transform: translate(-50%, -50%); transition: 0.1s; pointer-events: none; }
+        #knob-left { background: rgba(0, 240, 255, 0.5); }
+        #knob-right { background: rgba(255, 0, 60, 0.5); }
+        
+        #btn-boost { position: absolute; bottom: 180px; right: 40px; width: 60px; height: 60px; background: rgba(255, 234, 0, 0.2); border: 2px solid #ffea00; border-radius: 50%; color: #ffea00; display: flex; justify-content: center; align-items: center; font-family: 'Orbitron'; font-size: 12px; pointer-events: auto; }
+        #btn-boost:active { background: rgba(255, 234, 0, 0.6); }
+
+        @media (max-width: 768px) { #boost-ui { display: none; } }
     </style>
 </head>
 <body>
 
     <div id="hud">
         <div class="hud-text">Piloto: <span id="lbl-name" style="color: #fff;">---</span></div>
-        <div class="hud-text">Naves Destruidas: <span id="lbl-score" class="highlight">0</span></div>
+        <div class="hud-text">Bajas: <span id="lbl-score" class="highlight">0</span></div>
     </div>
     
     <div id="boost-ui">
@@ -41,12 +54,18 @@
         <div id="boost-bar-container"><div id="boost-bar"></div></div>
     </div>
 
+    <!-- UI Móvil (Se activa por JS) -->
+    <div id="mobile-controls">
+        <div id="joystick-left" class="joystick-zone"><div id="knob-left" class="knob"></div></div>
+        <div id="joystick-right" class="joystick-zone"><div id="knob-right" class="knob"></div></div>
+        <div id="btn-boost">TURBO</div>
+    </div>
+
     <div id="kill-feed"></div>
     <canvas id="gameCanvas"></canvas>
 
     <div id="death-screen">
         <h1>SISTEMA COLAPSADO</h1>
-        <p style="color: #fff; font-size: 1.2rem;">Tu nave ha sido destruida.</p>
         <button onclick="window.location.href='index.html'">Volver al Hangar</button>
     </div>
 
@@ -63,23 +82,25 @@
         function resize() { width = canvas.width = window.innerWidth; height = canvas.height = window.innerHeight; }
         window.addEventListener('resize', resize); resize();
 
+        // Detección Móvil
+        const isMobile = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+        if (isMobile) document.getElementById('mobile-controls').style.display = 'block';
+
         const socket = io();
         let myId = null; let isDead = false;
         
         const MAP_SIZE = 6000;
-        const ZOOM = 0.60;
+        const ZOOM = isMobile ? 0.45 : 0.60; // Más visión en celular
         
-        // Físicas Independientes: bodyAngle (movimiento) y turretAngle (disparo/ratón)
-        const player = { 
-            x: MAP_SIZE/2, y: MAP_SIZE/2, vx: 0, vy: 0, radius: 25, 
-            mouseX: MAP_SIZE/2, mouseY: MAP_SIZE/2, bodyAngle: 0, turretAngle: 0 
-        };
+        const player = { x: MAP_SIZE/2, y: MAP_SIZE/2, vx: 0, vy: 0, radius: 25, mouseX: MAP_SIZE/2, mouseY: MAP_SIZE/2, bodyAngle: 0, turretAngle: 0 };
         
         const keys = { w: false, a: false, s: false, d: false, space: false };
         let boost = { active: false, timer: 0, cooldown: 0, maxCooldown: 300 }; 
+        let mouseHeldFrames = 0; let isMouseDown = false;
         
-        let mouseHeldFrames = 0;
-        let isMouseDown = false;
+        // Variables Joysticks
+        let jLeft = { active: false, id: null, vx: 0, vy: 0 };
+        let jRight = { active: false, id: null, vx: 0, vy: 0 };
 
         let enemies = {}; let swarm = [];   
         const SWARM_COUNT = 800; const LETHAL_SPEED = 12;
@@ -89,18 +110,12 @@
         }
 
         socket.emit('login', { username: tempUser, password: tempPass });
-        socket.on('auth_result', (data) => {
-            if (data.ok) { myId = socket.id; socket.emit('join_match', { mode: gameMode }); } 
-            else window.location.href = 'index.html';
-        });
+        socket.on('auth_result', (data) => { if (data.ok) { myId = socket.id; socket.emit('join_match', { mode: gameMode }); } });
 
         socket.on('game_start', (data) => {
             for (let id in data.players) {
-                if (id !== myId) {
-                    enemies[id] = data.players[id]; 
-                    enemies[id].targetX = enemies[id].x; enemies[id].targetY = enemies[id].y; 
-                    enemies[id].bodyAngle = 0; enemies[id].turretAngle = 0;
-                } else { player.x = data.players[id].x; player.y = data.players[id].y; }
+                if (id !== myId) { enemies[id] = data.players[id]; enemies[id].targetX = enemies[id].x; enemies[id].targetY = enemies[id].y; enemies[id].bodyAngle = 0; enemies[id].turretAngle = 0; } 
+                else { player.x = data.players[id].x; player.y = data.players[id].y; }
             }
             requestAnimationFrame(gameLoop); setInterval(sendUpdate, 50);
         });
@@ -108,10 +123,7 @@
         socket.on('player_joined', (p) => { if (p.id !== myId) { p.targetX = p.x; p.targetY = p.y; p.bodyAngle = 0; p.turretAngle = 0; enemies[p.id] = p; } });
         socket.on('player_left', (id) => { delete enemies[id]; });
         socket.on('player_moved', (data) => {
-            if (enemies[data.id]) { 
-                enemies[data.id].targetX = data.x; enemies[data.id].targetY = data.y;
-                enemies[data.id].bodyAngle = data.bodyAngle; enemies[data.id].turretAngle = data.turretAngle;
-            }
+            if (enemies[data.id]) { enemies[data.id].targetX = data.x; enemies[data.id].targetY = data.y; enemies[data.id].bodyAngle = data.bodyAngle; enemies[data.id].turretAngle = data.turretAngle; }
         });
         
         socket.on('enemy_blast', (data) => { executeBlast(data.x, data.y, data.id, 'wave', 0); });
@@ -124,47 +136,101 @@
             if (data.killer === tempUser) document.getElementById('lbl-score').innerText = parseInt(document.getElementById('lbl-score').innerText) + 1;
         });
 
-        // LÓGICA DE TECLADO
-        window.addEventListener('keydown', (e) => {
-            const k = e.key.toLowerCase();
-            if (k === 'w' || e.key === 'ArrowUp') keys.w = true;
-            if (k === 's' || e.key === 'ArrowDown') keys.s = true;
-            if (k === 'a' || e.key === 'ArrowLeft') keys.a = true;
-            if (k === 'd' || e.key === 'ArrowRight') keys.d = true;
-            if (e.key === ' ' || e.key === 'Shift') keys.space = true;
-        });
-        window.addEventListener('keyup', (e) => {
-            const k = e.key.toLowerCase();
-            if (k === 'w' || e.key === 'ArrowUp') keys.w = false;
-            if (k === 's' || e.key === 'ArrowDown') keys.s = false;
-            if (k === 'a' || e.key === 'ArrowLeft') keys.a = false;
-            if (k === 'd' || e.key === 'ArrowRight') keys.d = false;
-            if (e.key === ' ' || e.key === 'Shift') keys.space = false;
-        });
+        // ====== CONTROLES PC ======
+        if (!isMobile) {
+            window.addEventListener('keydown', (e) => {
+                const k = e.key.toLowerCase();
+                if (k === 'w' || e.key === 'ArrowUp') keys.w = true;
+                if (k === 's' || e.key === 'ArrowDown') keys.s = true;
+                if (k === 'a' || e.key === 'ArrowLeft') keys.a = true;
+                if (k === 'd' || e.key === 'ArrowRight') keys.d = true;
+                if (e.key === ' ' || e.key === 'Shift') keys.space = true;
+            });
+            window.addEventListener('keyup', (e) => {
+                const k = e.key.toLowerCase();
+                if (k === 'w' || e.key === 'ArrowUp') keys.w = false;
+                if (k === 's' || e.key === 'ArrowDown') keys.s = false;
+                if (k === 'a' || e.key === 'ArrowLeft') keys.a = false;
+                if (k === 'd' || e.key === 'ArrowRight') keys.d = false;
+                if (e.key === ' ' || e.key === 'Shift') keys.space = false;
+            });
+            window.addEventListener('mousemove', (e) => {
+                player.mouseX = (e.clientX - width / 2) / ZOOM + player.x;
+                player.mouseY = (e.clientY - height / 2) / ZOOM + player.y;
+            });
+            window.addEventListener('mousedown', () => { isMouseDown = true; });
+            window.addEventListener('mouseup', () => {
+                isMouseDown = false;
+                if (mouseHeldFrames > 0 && mouseHeldFrames < 15) {
+                    executeBlast(player.x, player.y, myId, 'directional', player.turretAngle);
+                    socket.emit('kinetic_blast', { x: player.x, y: player.y }); 
+                }
+                mouseHeldFrames = 0;
+            });
+        }
 
-        // LÓGICA DE RATÓN
-        window.addEventListener('mousemove', (e) => {
-            player.mouseX = (e.clientX - width / 2) / ZOOM + player.x;
-            player.mouseY = (e.clientY - height / 2) / ZOOM + player.y;
-        });
-        window.addEventListener('mousedown', () => { isMouseDown = true; });
-        window.addEventListener('mouseup', () => {
-            isMouseDown = false;
-            if (mouseHeldFrames < 15 && mouseHeldFrames > 0) {
-                // Disparo direccional usa el ángulo de la torreta
-                executeBlast(player.x, player.y, myId, 'directional', player.turretAngle);
-                socket.emit('kinetic_blast', { x: player.x, y: player.y }); 
+        // ====== CONTROLES MÓVILES (TOUCH) ======
+        if (isMobile) {
+            const btnBoost = document.getElementById('btn-boost');
+            btnBoost.addEventListener('touchstart', (e) => { e.preventDefault(); keys.space = true; });
+            btnBoost.addEventListener('touchend', (e) => { e.preventDefault(); keys.space = false; });
+
+            function handleTouch(e) {
+                e.preventDefault();
+                const halfW = width / 2;
+                
+                // Reset flags
+                let leftFound = false; let rightFound = false;
+
+                for (let i = 0; i < e.touches.length; i++) {
+                    let t = e.touches[i];
+                    // Joystick Izquierdo (Movimiento)
+                    if (t.clientX < halfW && t.clientY > height / 2) {
+                        leftFound = true; jLeft.active = true;
+                        let centerX = 30 + 65; // left 30 + half width 65
+                        let centerY = height - 30 - 65;
+                        let dx = t.clientX - centerX; let dy = t.clientY - centerY;
+                        let dist = Math.hypot(dx, dy);
+                        if(dist > 65) { dx = (dx/dist)*65; dy = (dy/dist)*65; }
+                        document.getElementById('knob-left').style.transform = `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px))`;
+                        jLeft.vx = dx / 65; jLeft.vy = dy / 65;
+                    }
+                    // Joystick Derecho (Apuntar y Disparar)
+                    if (t.clientX >= halfW && t.clientY > height / 2 && t.target !== btnBoost) {
+                        rightFound = true; jRight.active = true; isMouseDown = true;
+                        let centerX = width - 30 - 65;
+                        let centerY = height - 30 - 65;
+                        let dx = t.clientX - centerX; let dy = t.clientY - centerY;
+                        let dist = Math.hypot(dx, dy);
+                        if(dist > 65) { dx = (dx/dist)*65; dy = (dy/dist)*65; }
+                        document.getElementById('knob-right').style.transform = `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px))`;
+                        
+                        // Solo gira si hay intención clara
+                        if(dist > 10) player.turretAngle = Math.atan2(dy, dx);
+                    }
+                }
+                
+                if (!leftFound) { jLeft.active = false; jLeft.vx = 0; jLeft.vy = 0; document.getElementById('knob-left').style.transform = `translate(-50%, -50%)`; }
+                if (!rightFound && jRight.active) {
+                    jRight.active = false; isMouseDown = false;
+                    document.getElementById('knob-right').style.transform = `translate(-50%, -50%)`;
+                    // Disparar al soltar
+                    if (mouseHeldFrames > 0 && mouseHeldFrames < 15) {
+                        executeBlast(player.x, player.y, myId, 'directional', player.turretAngle);
+                        socket.emit('kinetic_blast', { x: player.x, y: player.y }); 
+                    }
+                    mouseHeldFrames = 0;
+                }
             }
-            mouseHeldFrames = 0;
-        });
+            
+            window.addEventListener('touchstart', handleTouch, {passive: false});
+            window.addEventListener('touchmove', handleTouch, {passive: false});
+            window.addEventListener('touchend', handleTouch, {passive: false});
+        }
 
         function sendUpdate() {
             if (isDead) return;
-            // Enviamos ambos ángulos al servidor para que los demás nos vean rotar correctamente
-            socket.emit('player_update', { 
-                x: player.x, y: player.y, 
-                bodyAngle: player.bodyAngle, turretAngle: player.turretAngle 
-            }); 
+            socket.emit('player_update', { x: player.x, y: player.y, bodyAngle: player.bodyAngle, turretAngle: player.turretAngle }); 
         }
 
         function executeBlast(originX, originY, ownerId, type, shootAngle) {
@@ -178,142 +244,106 @@
                     if (type === 'directional') {
                         let angleDiff = Math.abs(angleToParticle - shootAngle);
                         if (angleDiff > Math.PI) angleDiff = 2 * Math.PI - angleDiff; 
-                        if (angleDiff < Math.PI / 3) { 
-                            s.vx += (dx / dist) * force * 45; s.vy += (dy / dist) * force * 45;
-                            s.owner = ownerId; 
-                        }
+                        if (angleDiff < Math.PI / 3) { s.vx += (dx / dist) * force * 45; s.vy += (dy / dist) * force * 45; s.owner = ownerId; }
                     } else if (type === 'wave') {
-                        s.vx += (dx / dist) * force * 20; s.vy += (dy / dist) * force * 20;
-                        s.owner = ownerId;
+                        s.vx += (dx / dist) * force * 20; s.vy += (dy / dist) * force * 20; s.owner = ownerId;
                     }
                 }
             });
         }
 
-        // Modificamos el render para dibujar Chasis y Torreta por separado
         function drawShip(x, y, radius, isLocal, bodyAngle, turretAngle, name, isBoosting, isCharging) {
             ctx.save(); ctx.translate(x, y);
             
             ctx.fillStyle = '#fff'; ctx.font = 'bold 20px Orbitron'; ctx.textAlign = 'center';
             ctx.fillText(name, 0, -radius - 30);
 
-            // --- ROTACIÓN DEL CHASIS DE LA NAVE ---
-            ctx.save();
-            ctx.rotate(bodyAngle);
-
-            if (isLocal && (keys.w || keys.a || keys.s || keys.d || isBoosting)) {
-                ctx.beginPath();
-                ctx.moveTo(-radius, -radius/2);
-                let fireLength = isBoosting ? 40 : 20;
-                ctx.lineTo(-radius - (Math.random()*15 + fireLength), 0);
-                ctx.lineTo(-radius, radius/2);
-                ctx.fillStyle = isBoosting ? '#00f0ff' : '#ffea00'; 
-                ctx.shadowColor = ctx.fillStyle; ctx.shadowBlur = 15;
-                ctx.fill(); ctx.shadowBlur = 0;
+            // CHASIS
+            ctx.save(); ctx.rotate(bodyAngle);
+            if (isLocal && ((keys.w || keys.a || keys.s || keys.d) || jLeft.active || isBoosting)) {
+                ctx.beginPath(); ctx.moveTo(-radius, -radius/2); let fireLength = isBoosting ? 40 : 20;
+                ctx.lineTo(-radius - (Math.random()*15 + fireLength), 0); ctx.lineTo(-radius, radius/2);
+                ctx.fillStyle = isBoosting ? '#00f0ff' : '#ffea00'; ctx.shadowColor = ctx.fillStyle; ctx.shadowBlur = 15; ctx.fill(); ctx.shadowBlur = 0;
             }
-
-            ctx.beginPath();
-            ctx.moveTo(radius * 1.5, 0); ctx.lineTo(-radius, radius);
-            ctx.lineTo(-radius * 0.3, 0); ctx.lineTo(-radius, -radius);
-            ctx.closePath();
-            
+            ctx.beginPath(); ctx.moveTo(radius * 1.5, 0); ctx.lineTo(-radius, radius); ctx.lineTo(-radius * 0.3, 0); ctx.lineTo(-radius, -radius); ctx.closePath();
             const mainColor = isLocal ? '#00f0ff' : '#ff003c';
-            ctx.fillStyle = mainColor; ctx.shadowColor = mainColor; ctx.shadowBlur = 20; ctx.fill();
-            ctx.shadowBlur = 0;
-            ctx.restore(); // Restauramos el chasis para no afectar a la torreta
+            ctx.fillStyle = mainColor; ctx.shadowColor = mainColor; ctx.shadowBlur = 20; ctx.fill(); ctx.shadowBlur = 0;
+            ctx.restore();
 
-            // --- ROTACIÓN DE LA TORRETA ---
-            ctx.save();
-            ctx.rotate(turretAngle);
-
-            // Base de la torreta
-            ctx.beginPath(); ctx.arc(0, 0, radius * 0.5, 0, Math.PI*2);
-            ctx.fillStyle = '#0f172a'; ctx.fill();
-            ctx.lineWidth = 2; ctx.strokeStyle = mainColor; ctx.stroke();
-
-            // Cañón de la torreta (Apunta al frente relativo a la torreta)
-            ctx.beginPath(); ctx.rect(0, -radius*0.15, radius*1.3, radius*0.3);
-            ctx.fillStyle = '#1e293b'; ctx.fill();
-            ctx.stroke();
-
-            // Efecto visual de Carga
+            // TORRETA
+            ctx.save(); ctx.rotate(turretAngle);
+            ctx.beginPath(); ctx.arc(0, 0, radius * 0.5, 0, Math.PI*2); ctx.fillStyle = '#0f172a'; ctx.fill(); ctx.lineWidth = 2; ctx.strokeStyle = mainColor; ctx.stroke();
+            ctx.beginPath(); ctx.rect(0, -radius*0.15, radius*1.3, radius*0.3); ctx.fillStyle = '#1e293b'; ctx.fill(); ctx.stroke();
+            
             if (isCharging) {
                 ctx.beginPath(); ctx.arc(0, 0, 100 + (Math.random()*10), 0, Math.PI*2);
                 ctx.strokeStyle = '#00f0ff'; ctx.lineWidth = 2; ctx.globalAlpha = 0.5; ctx.stroke(); ctx.globalAlpha = 1.0;
             }
-            ctx.restore(); // Restauramos torreta
-
-            ctx.restore(); // Restauramos traslación general
+            ctx.restore();
+            ctx.restore();
         }
 
         function drawMinimap() {
-            const mmSize = 200; const padding = 20; const mmX = width - mmSize - padding; const mmY = height - mmSize - padding;
+            const mmSize = isMobile ? 120 : 200; const padding = 20; 
+            const mmX = width - mmSize - padding; const mmY = isMobile ? 20 : (height - mmSize - padding);
             ctx.fillStyle = 'rgba(10, 15, 30, 0.8)'; ctx.fillRect(mmX, mmY, mmSize, mmSize);
             ctx.strokeStyle = '#00f0ff'; ctx.lineWidth = 2; ctx.strokeRect(mmX, mmY, mmSize, mmSize);
 
             const px = (player.x / MAP_SIZE) * mmSize; const py = (player.y / MAP_SIZE) * mmSize;
-            ctx.fillStyle = '#00f0ff'; ctx.beginPath(); ctx.arc(mmX + px, mmY + py, 5, 0, Math.PI * 2); ctx.fill();
+            ctx.fillStyle = '#00f0ff'; ctx.beginPath(); ctx.arc(mmX + px, mmY + py, 4, 0, Math.PI * 2); ctx.fill();
             ctx.fillStyle = '#ff003c';
             for (let id in enemies) {
                 const ex = (enemies[id].x / MAP_SIZE) * mmSize; const ey = (enemies[id].y / MAP_SIZE) * mmSize;
-                ctx.beginPath(); ctx.arc(mmX + ex, mmY + ey, 4, 0, Math.PI * 2); ctx.fill();
-            }
-        }
-
-        function updateUI() {
-            const bar = document.getElementById('boost-bar');
-            const lbl = document.getElementById('boost-label');
-            if (boost.cooldown > 0) {
-                let pct = 100 - (boost.cooldown / boost.maxCooldown) * 100;
-                bar.style.width = pct + '%'; bar.style.background = '#ff003c';
-                lbl.innerText = 'RECARGANDO TURBO...'; lbl.style.color = '#ff003c';
-            } else {
-                bar.style.width = '100%'; bar.style.background = '#00f0ff';
-                lbl.innerText = 'TURBO [ESPACIO] LISTO'; lbl.style.color = '#00f0ff';
+                ctx.beginPath(); ctx.arc(mmX + ex, mmY + ey, 3, 0, Math.PI * 2); ctx.fill();
             }
         }
 
         function gameLoop() {
             if (isDead) return;
 
-            let speedLimit = boost.active ? 18 : 8;
-            let accel = boost.active ? 1.5 : 0.6;
-            let friction = 0.92;
+            let speedLimit = boost.active ? 18 : 8; let accel = boost.active ? 1.5 : 0.6; let friction = 0.92;
 
-            // Obtener el vector de dirección del teclado
+            // Movimiento PC vs Móvil
             let moveX = 0; let moveY = 0;
-            if (keys.w) moveY -= 1;
-            if (keys.s) moveY += 1;
-            if (keys.a) moveX -= 1;
-            if (keys.d) moveX += 1;
+            if (!isMobile) {
+                if (keys.w) moveY -= 1; if (keys.s) moveY += 1;
+                if (keys.a) moveX -= 1; if (keys.d) moveX += 1;
+            } else {
+                moveX = jLeft.vx; moveY = jLeft.vy;
+            }
 
-            // Normalizar movimiento para que la nave apunte a donde se mueve
             if (moveX !== 0 || moveY !== 0) {
                 let length = Math.hypot(moveX, moveY);
-                moveX /= length; moveY /= length;
+                if(length > 1) { moveX /= length; moveY /= length; } // Normalizar solo si sobrepasa 1
                 
-                player.vx += moveX * accel;
-                player.vy += moveY * accel;
-                
-                // Actualizar el ángulo del CHASIS (la nave física)
+                player.vx += moveX * accel; player.vy += moveY * accel;
                 player.bodyAngle = Math.atan2(moveY, moveX);
             }
             
             player.vx *= friction; player.vy *= friction;
-
             const currentSpeed = Math.hypot(player.vx, player.vy);
-            if (currentSpeed > speedLimit) {
-                player.vx = (player.vx / currentSpeed) * speedLimit;
-                player.vy = (player.vy / currentSpeed) * speedLimit;
-            }
+            if (currentSpeed > speedLimit) { player.vx = (player.vx / currentSpeed) * speedLimit; player.vy = (player.vy / currentSpeed) * speedLimit; }
 
             if (keys.space && boost.cooldown <= 0 && !boost.active) { boost.active = true; boost.timer = 40; boost.cooldown = boost.maxCooldown; }
             if (boost.active) { boost.timer--; if (boost.timer <= 0) boost.active = false; }
             if (boost.cooldown > 0) boost.cooldown--;
-            updateUI();
+            
+            if(!isMobile) {
+                const bar = document.getElementById('boost-bar'); const lbl = document.getElementById('boost-label');
+                if (boost.cooldown > 0) {
+                    bar.style.width = (100 - (boost.cooldown / boost.maxCooldown) * 100) + '%'; bar.style.background = '#ff003c';
+                    lbl.innerText = 'RECARGANDO TURBO...'; lbl.style.color = '#ff003c';
+                } else {
+                    bar.style.width = '100%'; bar.style.background = '#00f0ff';
+                    lbl.innerText = 'TURBO [ESPACIO] LISTO'; lbl.sty
+                    }
+            } else {
+                const btnB = document.getElementById('btn-boost');
+                if (boost.cooldown > 0) { btnB.style.borderColor = '#ff003c'; btnB.style.color = '#ff003c'; btnB.innerText = 'WAIT'; } 
+                else { btnB.style.borderColor = '#ffea00'; btnB.style.color = '#ffea00'; btnB.innerText = 'TURBO'; }
+            }
 
-            // El RATÓN solo controla la TORRETA
-            player.turretAngle = Math.atan2(player.mouseY - player.y, player.mouseX - player.x);
+            if (!isMobile) player.turretAngle = Math.atan2(player.mouseY - player.y, player.mouseX - player.x);
 
             player.x += player.vx; player.y += player.vy;
             if (player.x < 0) player.x = 0; if (player.x > MAP_SIZE) player.x = MAP_SIZE;
@@ -321,10 +351,7 @@
 
             if (isMouseDown) {
                 mouseHeldFrames++;
-                if (mouseHeldFrames > 15) {
-                    executeBlast(player.x, player.y, myId, 'wave', 0); 
-                    if (mouseHeldFrames % 10 === 0) socket.emit('kinetic_blast', { x: player.x, y: player.y });
-                }
+                if (mouseHeldFrames > 15) { executeBlast(player.x, player.y, myId, 'wave', 0); if (mouseHeldFrames % 10 === 0) socket.emit('kinetic_blast', { x: player.x, y: player.y }); }
             }
 
             ctx.fillStyle = '#010103'; ctx.fillRect(0, 0, width, height);
@@ -371,9 +398,7 @@
             });
 
             for (let id in enemies) {
-                let e = enemies[id];
-                e.x += (e.targetX - e.x) * 0.3; e.y += (e.targetY - e.y) * 0.3;
-                // Dibujamos a los enemigos con sus respectivos ángulos de chasis y torreta recibidos por red
+                let e = enemies[id]; e.x += (e.targetX - e.x) * 0.3; e.y += (e.targetY - e.y) * 0.3;
                 drawShip(e.x, e.y, 25, false, e.bodyAngle || 0, e.turretAngle || 0, e.username, false, false);
             }
 
