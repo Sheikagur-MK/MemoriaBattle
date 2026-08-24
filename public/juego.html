@@ -3,47 +3,47 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Rebaño Mortal - Combate</title>
+    <title>Rebaño Mortal - Combate Orbital</title>
     <script src="/socket.io/socket.io.js"></script>
     <style>
         body, html {
             margin: 0; padding: 0; width: 100%; height: 100%;
-            background: #030308; overflow: hidden;
+            background: #020205; overflow: hidden;
             font-family: 'Segoe UI', sans-serif; user-select: none; touch-action: none;
         }
         canvas { display: block; width: 100%; height: 100%; }
         
-        #hud { position: absolute; top: 20px; left: 20px; color: white; pointer-events: none; z-index: 10; text-shadow: 0 2px 4px rgba(0,0,0,0.8); }
-        .hud-text { font-size: 20px; font-weight: bold; margin-bottom: 5px; }
-        .highlight { color: #10b981; }
+        #hud { position: absolute; top: 20px; left: 20px; color: white; pointer-events: none; z-index: 10; text-shadow: 0 2px 10px rgba(0,0,0,1); }
+        .hud-text { font-size: 18px; font-weight: bold; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 1px; color: #94a3b8; }
+        .highlight { color: #0ea5e9; font-size: 24px; }
         
         #kill-feed { position: absolute; top: 20px; right: 20px; color: white; text-align: right; pointer-events: none; font-size: 14px; z-index: 10; }
-        .feed-item { margin-bottom: 5px; opacity: 0.8; background: rgba(0,0,0,0.5); padding: 5px 10px; border-radius: 4px; border-left: 2px solid #ef4444; }
+        .feed-item { margin-bottom: 5px; background: rgba(15, 23, 42, 0.7); padding: 8px 12px; border-radius: 4px; border-right: 3px solid #f43f5e; box-shadow: 0 0 10px rgba(0,0,0,0.5); }
         
         #death-screen {
             position: absolute; top: 0; left: 0; width: 100%; height: 100%;
-            background: rgba(11, 15, 25, 0.9); display: none;
-            flex-direction: column; justify-content: center; align-items: center; z-index: 20; backdrop-filter: blur(5px);
+            background: rgba(2, 2, 5, 0.85); display: none;
+            flex-direction: column; justify-content: center; align-items: center; z-index: 20; backdrop-filter: blur(10px);
         }
-        #death-screen h1 { color: #ef4444; font-size: 48px; text-transform: uppercase; margin-bottom: 10px; text-shadow: 0 0 20px #ef4444; }
-        #death-screen p { color: white; font-size: 20px; }
-        button { background: #3b82f6; color: white; border: none; padding: 15px 30px; font-size: 18px; border-radius: 8px; cursor: pointer; font-weight: bold; margin-top: 20px; text-transform: uppercase; }
-        button:hover { background: #2563eb; }
+        #death-screen h1 { color: #f43f5e; font-size: 3rem; text-transform: uppercase; margin-bottom: 10px; text-shadow: 0 0 30px #f43f5e; letter-spacing: 5px; }
+        #death-screen p { color: #94a3b8; font-size: 1.2rem; }
+        button { background: #0ea5e9; color: white; border: none; padding: 15px 30px; font-size: 1.1rem; border-radius: 8px; cursor: pointer; font-weight: bold; margin-top: 30px; text-transform: uppercase; letter-spacing: 2px; }
+        button:hover { background: #0284c7; box-shadow: 0 0 20px rgba(14,165,233,0.5); }
     </style>
 </head>
 <body>
 
     <div id="hud">
-        <div class="hud-text">Sector: <span id="lbl-room" style="color: #60a5fa;">---</span></div>
-        <div class="hud-text">Destrucciones: <span id="lbl-score" class="highlight">0</span></div>
+        <div class="hud-text">Sector: <span id="lbl-room" style="color: #f8fafc;">---</span></div>
+        <div class="hud-text">Naves Destruidas: <span id="lbl-score" class="highlight">0</span></div>
     </div>
     <div id="kill-feed"></div>
     <canvas id="gameCanvas"></canvas>
 
     <div id="death-screen">
-        <h1>Núcleo Destruido</h1>
-        <p id="death-msg">Tu energía cinética fue neutralizada.</p>
-        <button onclick="window.location.href='index.html'">Desconexión (Volver al Lobby)</button>
+        <h1>Nave Destruida</h1>
+        <p id="death-msg">Blindaje perforado por energía cinética.</p>
+        <button onclick="window.location.href='index.html'">Volver al Hangar</button>
     </div>
 
     <script>
@@ -64,32 +64,28 @@
         let myId = null;
         let isDead = false;
         
-        // Parámetros del Mundo y Cámara
-        const MAP_SIZE = 3000;
-        const ZOOM = 0.55; // Nivel de alejamiento (Menos zoom = ves más mapa)
+        // Parámetros Épicos
+        const MAP_SIZE = 6000; // MAPA GIGANTE EL DOBLE DEL ANTERIOR
+        const ZOOM = 0.55; 
         
-        const player = { x: MAP_SIZE/2, y: MAP_SIZE/2, radius: 20, pulling: false, mouseX: MAP_SIZE/2, mouseY: MAP_SIZE/2 };
+        const player = { x: MAP_SIZE/2, y: MAP_SIZE/2, radius: 25, pulling: false, mouseX: MAP_SIZE/2, mouseY: MAP_SIZE/2, angle: 0 };
         let enemies = {}; 
         let swarm = [];   
-        const SWARM_COUNT = 400;
-        const LETHAL_SPEED = 8;
+        const SWARM_COUNT = 800; // Más partículas para llenar el nuevo mapa
+        const LETHAL_SPEED = 10; // Un poco más de velocidad requerida
 
         for(let i = 0; i < SWARM_COUNT; i++) {
             swarm.push({
                 x: Math.random() * MAP_SIZE, y: Math.random() * MAP_SIZE,
-                vx: 0, vy: 0, radius: 5, owner: null
+                vx: 0, vy: 0, radius: 4, owner: null
             });
         }
 
         socket.emit('login', { username: tempUser, password: tempPass });
 
         socket.on('auth_result', (data) => {
-            if (data.ok) {
-                myId = socket.id;
-                socket.emit('join_match', { mode: gameMode });
-            } else {
-                window.location.href = 'index.html';
-            }
+            if (data.ok) { myId = socket.id; socket.emit('join_match', { mode: gameMode }); } 
+            else { window.location.href = 'index.html'; }
         });
 
         socket.on('game_start', (data) => {
@@ -97,11 +93,9 @@
             for (let id in data.players) {
                 if (id !== myId) {
                     enemies[id] = data.players[id];
-                    enemies[id].targetX = enemies[id].x;
-                    enemies[id].targetY = enemies[id].y;
+                    enemies[id].targetX = enemies[id].x; enemies[id].targetY = enemies[id].y; enemies[id].angle = 0;
                 } else {
-                    player.x = data.players[id].x;
-                    player.y = data.players[id].y;
+                    player.x = data.players[id].x; player.y = data.players[id].y;
                 }
             }
             requestAnimationFrame(gameLoop);
@@ -109,7 +103,7 @@
         });
 
         socket.on('player_joined', (p) => {
-            if (p.id !== myId) { p.targetX = p.x; p.targetY = p.y; enemies[p.id] = p; }
+            if (p.id !== myId) { p.targetX = p.x; p.targetY = p.y; p.angle = 0; enemies[p.id] = p; }
         });
         socket.on('player_left', (id) => { delete enemies[id]; });
         socket.on('player_moved', (data) => {
@@ -123,7 +117,7 @@
             const feed = document.getElementById('kill-feed');
             const item = document.createElement('div');
             item.className = 'feed-item';
-            item.innerHTML = `<span style="color:#ef4444">${data.killer}</span> eliminó a <span style="color:#9ca3af">${data.victim}</span>`;
+            item.innerHTML = `<span style="color:#f43f5e">${data.killer}</span> eliminó a <span style="color:#94a3b8">${data.victim}</span>`;
             feed.appendChild(item);
             setTimeout(() => item.remove(), 4000);
 
@@ -141,7 +135,6 @@
             let clientX = e.clientX || (e.touches && e.touches[0].clientX);
             let clientY = e.clientY || (e.touches && e.touches[0].clientY);
             if (clientX !== undefined) {
-                // Matemáticas para traducir la posición del ratón considerando el Zoom de la cámara
                 player.mouseX = (clientX - width / 2) / ZOOM + player.x;
                 player.mouseY = (clientY - height / 2) / ZOOM + player.y;
             }
@@ -167,184 +160,206 @@
 
         function applyKineticBlast(originX, originY, ownerId) {
             swarm.forEach(s => {
-                const dx = s.x - originX;
-                const dy = s.y - originY;
+                const dx = s.x - originX; const dy = s.y - originY;
                 const dist = Math.hypot(dx, dy);
-                if (dist < 250) {
-                    const force = (250 - dist) / 200;
-                    s.vx += (dx / dist) * force * 30; 
-                    s.vy += (dy / dist) * force * 30;
+                if (dist < 300) {
+                    const force = (300 - dist) / 200;
+                    s.vx += (dx / dist) * force * 35; 
+                    s.vy += (dy / dist) * force * 35;
                     s.owner = ownerId; 
                 }
             });
         }
 
-        // DIBUJAR MINIMAPA UI
+        function drawShip(x, y, radius, color, angle, isPulling, name) {
+            ctx.save();
+            ctx.translate(x, y);
+            
+            // Etiqueta del nombre (arriba, no gira con la nave)
+            ctx.fillStyle = '#94a3b8'; ctx.font = 'bold 24px sans-serif'; ctx.textAlign = 'center';
+            ctx.fillText(name, 0, -radius - 20);
+
+            // Rotar universo local para dibujar la nave
+            ctx.rotate(angle);
+
+            // Propulsor (Fuego de motor)
+            ctx.beginPath();
+            ctx.moveTo(-radius + 5, -radius/2 + 5);
+            ctx.lineTo(-radius - (Math.random()*15 + 10), 0);
+            ctx.lineTo(-radius + 5, radius/2 - 5);
+            ctx.fillStyle = '#fbbf24'; ctx.fill();
+
+            // Cuerpo de la nave (Diseño Delta)
+            ctx.beginPath();
+            ctx.moveTo(radius * 1.2, 0); // Nariz puntiaguda
+            ctx.lineTo(-radius, radius * 0.8); // Ala Izquierda
+            ctx.lineTo(-radius * 0.4, 0); // Centro Trasero
+            ctx.lineTo(-radius, -radius * 0.8); // Ala Derecha
+            ctx.closePath();
+            
+            ctx.fillStyle = color;
+            ctx.shadowColor = color;
+            ctx.shadowBlur = 20;
+            ctx.fill();
+
+            // Cabina (Cockpit)
+            ctx.beginPath();
+            ctx.moveTo(radius * 0.4, 0);
+            ctx.lineTo(-radius * 0.1, radius * 0.2);
+            ctx.lineTo(-radius * 0.1, -radius * 0.2);
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
+            ctx.shadowBlur = 0;
+            ctx.fill();
+
+            // Escudo Magnético
+            if (isPulling) {
+                ctx.beginPath(); ctx.arc(0, 0, 300, 0, Math.PI*2);
+                ctx.strokeStyle = color; ctx.lineWidth = 4;
+                ctx.globalAlpha = 0.3; ctx.stroke(); ctx.globalAlpha = 1.0;
+            }
+            ctx.restore();
+        }
+
         function drawMinimap() {
-            const mmSize = 180;
+            const mmSize = 200;
             const padding = 20;
             const mmX = width - mmSize - padding;
             const mmY = height - mmSize - padding;
 
-            // Fondo Minimapa
-            ctx.fillStyle = 'rgba(5, 10, 20, 0.7)';
+            ctx.fillStyle = 'rgba(2, 2, 5, 0.8)';
             ctx.fillRect(mmX, mmY, mmSize, mmSize);
-            ctx.strokeStyle = '#3b82f6';
-            ctx.lineWidth = 2;
-            ctx.strokeRect(mmX, mmY, mmSize, mmSize);
+            ctx.strokeStyle = '#0ea5e9'; ctx.lineWidth = 2; ctx.strokeRect(mmX, mmY, mmSize, mmSize);
 
-            // Dibujar Jugador en Minimapa
-            const px = (player.x / MAP_SIZE) * mmSize;
-            const py = (player.y / MAP_SIZE) * mmSize;
-            ctx.fillStyle = '#10b981';
-            ctx.beginPath();
-            ctx.arc(mmX + px, mmY + py, 4, 0, Math.PI * 2);
-            ctx.fill();
+            const px = (player.x / MAP_SIZE) * mmSize; const py = (player.y / MAP_SIZE) * mmSize;
+            ctx.fillStyle = '#10b981'; ctx.beginPath(); ctx.arc(mmX + px, mmY + py, 5, 0, Math.PI * 2); ctx.fill();
             
-            // Dibujar Enemigos
-            ctx.fillStyle = '#ef4444';
+            ctx.fillStyle = '#f43f5e';
             for (let id in enemies) {
-                let e = enemies[id];
-                const ex = (e.x / MAP_SIZE) * mmSize;
-                const ey = (e.y / MAP_SIZE) * mmSize;
-                ctx.beginPath();
-                ctx.arc(mmX + ex, mmY + ey, 3, 0, Math.PI * 2);
-                ctx.fill();
+                const ex = (enemies[id].x / MAP_SIZE) * mmSize; const ey = (enemies[id].y / MAP_SIZE) * mmSize;
+                ctx.beginPath(); ctx.arc(mmX + ex, mmY + ey, 4, 0, Math.PI * 2); ctx.fill();
             }
         }
 
         function gameLoop() {
             if (isDead) return;
 
-            // Movimiento
+            // Físicas y Movimiento del Jugador
             const dx = player.mouseX - player.x;
             const dy = player.mouseY - player.y;
-            if (Math.hypot(dx, dy) > 10) {
-                player.x += dx * 0.06;
-                player.y += dy * 0.06;
+            const distToMouse = Math.hypot(dx, dy);
+            
+            // Actualizar ángulo de la nave hacia el ratón
+            player.angle = Math.atan2(dy, dx);
+
+            if (distToMouse > 15) {
+                player.x += (dx / distToMouse) * 8; // Velocidad de nave
+                player.y += (dy / distToMouse) * 8;
             }
 
-            // Limitar al borde del mapa
             if (player.x < 0) player.x = 0; if (player.x > MAP_SIZE) player.x = MAP_SIZE;
             if (player.y < 0) player.y = 0; if (player.y > MAP_SIZE) player.y = MAP_SIZE;
 
-            // Limpiar Pantalla
-            ctx.fillStyle = '#030308';
-            ctx.fillRect(0, 0, width, height);
-
+            // Render
+            ctx.fillStyle = '#020205'; ctx.fillRect(0, 0, width, height);
             ctx.save();
-            
-            // APLICAR CÁMARA CON ZOOM
-            ctx.translate(width / 2, height / 2); // Centrar
-            ctx.scale(ZOOM, ZOOM);                // Alejar la vista
-            ctx.translate(-player.x, -player.y);  // Mover al jugador
+            ctx.translate(width / 2, height / 2);
+            ctx.scale(ZOOM, ZOOM);
+            ctx.translate(-player.x, -player.y);
 
-            // Suelo Cibernético (Líneas de la cuadrícula)
-            ctx.strokeStyle = '#0f172a';
+            // Cuadrícula Espacial
+            ctx.strokeStyle = 'rgba(14, 165, 233, 0.1)';
             ctx.lineWidth = 2;
-            const gridSize = 150;
+            const gridSize = 200;
             ctx.beginPath();
             for(let i = 0; i <= MAP_SIZE; i += gridSize) {
-                ctx.moveTo(i, 0); ctx.lineTo(i, MAP_SIZE); // Verticales
-                ctx.moveTo(0, i); ctx.lineTo(MAP_SIZE, i); // Horizontales
+                ctx.moveTo(i, 0); ctx.lineTo(i, MAP_SIZE);
+                ctx.moveTo(0, i); ctx.lineTo(MAP_SIZE, i);
             }
             ctx.stroke();
             
-            // Borde del mapa letal
-            ctx.strokeStyle = '#ef4444';
-            ctx.lineWidth = 10;
-            ctx.strokeRect(0, 0, MAP_SIZE, MAP_SIZE);
+            // Muro Letal
+            ctx.strokeStyle = 'rgba(244, 63, 94, 0.8)'; ctx.lineWidth = 15; ctx.strokeRect(0, 0, MAP_SIZE, MAP_SIZE);
 
-            // --- LÓGICA DEL ENJAMBRE ---
+            // --- PARTÍCULAS DE ENERGÍA ---
             swarm.forEach(s => {
-                s.vx *= 0.96; s.vy *= 0.96;
+                s.vx *= 0.97; s.vy *= 0.97; // Fricción espacial
                 const speed = Math.hypot(s.vx, s.vy);
                 if (speed < 2) s.owner = null;
 
                 let attracted = false;
                 
                 if (player.pulling) {
-                    const pDx = player.x - s.x; const pDy = player.y - s.y;
-                    const pDist = Math.hypot(pDx, pDy);
-                    if (pDist > 40 && pDist < 500) {
-                        s.vx += (pDx / pDist) * 1.5; s.vy += (pDy / pDist) * 1.5; attracted = true;
-                    }
+                    const pDx = player.x - s.x; const pDy = player.y - s.y; const pDist = Math.hypot(pDx, pDy);
+                    if (pDist > 50 && pDist < 600) { s.vx += (pDx / pDist) * 1.8; s.vy += (pDy / pDist) * 1.8; attracted = true; }
                 }
                 
                 for (let id in enemies) {
                     let e = enemies[id];
                     if (e.pulling) {
-                        const eDx = e.x - s.x; const eDy = e.y - s.y;
-                        const eDist = Math.hypot(eDx, eDy);
-                        if (eDist > 40 && eDist < 500) {
-                            s.vx += (eDx / eDist) * 1.5; s.vy += (eDy / eDist) * 1.5;
-                        }
+                        const eDx = e.x - s.x; const eDy = e.y - s.y; const eDist = Math.hypot(eDx, eDy);
+                        if (eDist > 50 && eDist < 600) { s.vx += (eDx / eDist) * 1.8; s.vy += (eDy / eDist) * 1.8; }
                     }
                 }
 
                 if (!attracted && !s.owner && speed < 1) {
-                    s.vx += (Math.random() - 0.5) * 0.3; s.vy += (Math.random() - 0.5) * 0.3;
+                    s.vx += (Math.random() - 0.5) * 0.4; s.vy += (Math.random() - 0.5) * 0.4;
                 }
 
                 s.x += s.vx; s.y += s.vy;
                 
-                // Rebote en los bordes del mapa
                 if(s.x < 0 || s.x > MAP_SIZE) s.vx *= -1;
                 if(s.y < 0 || s.y > MAP_SIZE) s.vy *= -1;
 
                 if (speed > LETHAL_SPEED && s.owner === myId) {
                     for (let id in enemies) {
                         let e = enemies[id];
-                        if (Math.hypot(s.x - e.x, s.y - e.y) < player.radius) {
+                        if (Math.hypot(s.x - e.x, s.y - e.y) < 35) { // Hitbox de la nave
                             socket.emit('player_killed', { victimId: id });
                             s.vx *= 0.1; s.vy *= 0.1; 
                         }
                     }
                 }
 
-                ctx.beginPath();
-                ctx.arc(s.x, s.y, s.radius, 0, Math.PI * 2);
-                if (speed > LETHAL_SPEED) {
-                    ctx.fillStyle = s.owner === myId ? '#10b981' : '#ef4444'; 
-                    ctx.shadowColor = ctx.fillStyle; ctx.shadowBlur = 15;
-                } else {
-                    ctx.fillStyle = '#3b82f6'; ctx.shadowBlur = 0;
-                }
-                ctx.fill();
-            });
-            ctx.shadowBlur = 0;
+                // DIBUJO DE LA PARTÍCULA (Efecto Láser vs Orbe)
+                ctx.save();
+                ctx.translate(s.x, s.y);
+                const particleAngle = Math.atan2(s.vy, s.vx);
+                ctx.rotate(particleAngle);
 
-            // --- ENEMIGOS ---
+                ctx.beginPath();
+                if (speed > LETHAL_SPEED) {
+                    // Rayo Láser letal
+                    const length = speed * 2;
+                    ctx.moveTo(-length, 0); ctx.lineTo(length, 0);
+                    ctx.strokeStyle = s.owner === myId ? '#10b981' : '#f43f5e';
+                    ctx.lineWidth = 6;
+                    ctx.shadowColor = ctx.strokeStyle; ctx.shadowBlur = 15;
+                    ctx.stroke();
+                } else {
+                    // Orbe de energía pulsante neutral
+                    ctx.arc(0, 0, s.radius + (Math.random()*2), 0, Math.PI * 2);
+                    ctx.fillStyle = '#0ea5e9'; // Azul neón
+                    ctx.shadowColor = '#0ea5e9'; ctx.shadowBlur = 10;
+                    ctx.fill();
+                }
+                ctx.restore();
+            });
+
+            // --- ENEMIGOS (Naves Rojas) ---
             for (let id in enemies) {
                 let e = enemies[id];
-                e.x += (e.targetX - e.x) * 0.2; e.y += (e.targetY - e.y) * 0.2;
-
-                ctx.beginPath(); ctx.arc(e.x, e.y, player.radius, 0, Math.PI*2);
-                ctx.fillStyle = '#ef4444'; ctx.fill();
+                const eDist = Math.hypot(e.targetX - e.x, e.targetY - e.y);
+                if (eDist > 2) e.angle = Math.atan2(e.targetY - e.y, e.targetX - e.x); // Calcula a dónde vuela
                 
-                if (e.pulling) {
-                    ctx.beginPath(); ctx.arc(e.x, e.y, 250, 0, Math.PI*2);
-                    ctx.strokeStyle = 'rgba(239, 68, 68, 0.2)'; ctx.lineWidth = 3; ctx.stroke();
-                }
-                ctx.fillStyle = '#9ca3af'; ctx.font = 'bold 20px sans-serif'; ctx.textAlign = 'center';
-                ctx.fillText(e.username, e.x, e.y - 35);
+                e.x += (e.targetX - e.x) * 0.2; e.y += (e.targetY - e.y) * 0.2;
+                drawShip(e.x, e.y, 25, '#f43f5e', e.angle, e.pulling, e.username);
             }
 
-            // --- JUGADOR ---
-            ctx.beginPath(); ctx.arc(player.x, player.y, player.radius, 0, Math.PI*2);
-            ctx.fillStyle = '#10b981'; ctx.shadowColor = '#10b981'; ctx.shadowBlur = 20; ctx.fill(); ctx.shadowBlur = 0;
+            // --- JUGADOR (Nave Verde) ---
+            drawShip(player.x, player.y, player.radius, '#10b981', player.angle, player.pulling, tempUser);
 
-            if (player.pulling) {
-                // Radio magnético más grande visible
-                ctx.beginPath(); ctx.arc(player.x, player.y, 250, 0, Math.PI*2);
-                ctx.strokeStyle = 'rgba(16, 185, 129, 0.2)'; ctx.lineWidth = 3; ctx.stroke();
-            }
-
-            ctx.restore(); // Quitamos la cámara para dibujar la Interfaz (UI) encima de todo
-
-            // DIBUJAR MINIMAPA FUERA DEL ZOOM
+            ctx.restore();
             drawMinimap();
-
             requestAnimationFrame(gameLoop);
         }
     </script>
