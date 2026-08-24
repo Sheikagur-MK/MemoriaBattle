@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Rebaño Mortal - Combate</title>
+    <title>Rebaño Mortal - Combate Orbital</title>
     <script src="/socket.io/socket.io.js"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@700&display=swap');
@@ -69,16 +69,15 @@
         const MAP_SIZE = 6000;
         const ZOOM = 0.60;
         
+        // Físicas Independientes: bodyAngle (movimiento) y turretAngle (disparo/ratón)
         const player = { 
             x: MAP_SIZE/2, y: MAP_SIZE/2, vx: 0, vy: 0, radius: 25, 
-            mouseX: MAP_SIZE/2, mouseY: MAP_SIZE/2, angle: 0 
+            mouseX: MAP_SIZE/2, mouseY: MAP_SIZE/2, bodyAngle: 0, turretAngle: 0 
         };
         
-        // Controles de Teclado
         const keys = { w: false, a: false, s: false, d: false, space: false };
-        let boost = { active: false, timer: 0, cooldown: 0, maxCooldown: 300 }; // 300 frames = 5 segundos a 60fps
+        let boost = { active: false, timer: 0, cooldown: 0, maxCooldown: 300 }; 
         
-        // Controles de Ratón y Disparo
         let mouseHeldFrames = 0;
         let isMouseDown = false;
 
@@ -98,19 +97,23 @@
         socket.on('game_start', (data) => {
             for (let id in data.players) {
                 if (id !== myId) {
-                    enemies[id] = data.players[id]; enemies[id].targetX = enemies[id].x; enemies[id].targetY = enemies[id].y; enemies[id].angle = 0;
+                    enemies[id] = data.players[id]; 
+                    enemies[id].targetX = enemies[id].x; enemies[id].targetY = enemies[id].y; 
+                    enemies[id].bodyAngle = 0; enemies[id].turretAngle = 0;
                 } else { player.x = data.players[id].x; player.y = data.players[id].y; }
             }
             requestAnimationFrame(gameLoop); setInterval(sendUpdate, 50);
         });
 
-        socket.on('player_joined', (p) => { if (p.id !== myId) { p.targetX = p.x; p.targetY = p.y; p.angle = 0; enemies[p.id] = p; } });
+        socket.on('player_joined', (p) => { if (p.id !== myId) { p.targetX = p.x; p.targetY = p.y; p.bodyAngle = 0; p.turretAngle = 0; enemies[p.id] = p; } });
         socket.on('player_left', (id) => { delete enemies[id]; });
         socket.on('player_moved', (data) => {
-            if (enemies[data.id]) { enemies[data.id].targetX = data.x; enemies[data.id].targetY = data.y; }
+            if (enemies[data.id]) { 
+                enemies[data.id].targetX = data.x; enemies[data.id].targetY = data.y;
+                enemies[data.id].bodyAngle = data.bodyAngle; enemies[data.id].turretAngle = data.turretAngle;
+            }
         });
         
-        // Cuando recibimos un blast de un enemigo, aplicamos onda expansiva visual 360
         socket.on('enemy_blast', (data) => { executeBlast(data.x, data.y, data.id, 'wave', 0); });
 
         socket.on('kill_feed', (data) => {
@@ -148,19 +151,22 @@
         window.addEventListener('mouseup', () => {
             isMouseDown = false;
             if (mouseHeldFrames < 15 && mouseHeldFrames > 0) {
-                // Clic Rápido: Disparo Direccional (Escopeta)
-                executeBlast(player.x, player.y, myId, 'directional', player.angle);
-                socket.emit('kinetic_blast', { x: player.x, y: player.y }); // Avisar al server
+                // Disparo direccional usa el ángulo de la torreta
+                executeBlast(player.x, player.y, myId, 'directional', player.turretAngle);
+                socket.emit('kinetic_blast', { x: player.x, y: player.y }); 
             }
             mouseHeldFrames = 0;
         });
 
         function sendUpdate() {
             if (isDead) return;
-            socket.emit('player_update', { x: player.x, y: player.y, pulling: false }); // Pulling ya es pasivo
+            // Enviamos ambos ángulos al servidor para que los demás nos vean rotar correctamente
+            socket.emit('player_update', { 
+                x: player.x, y: player.y, 
+                bodyAngle: player.bodyAngle, turretAngle: player.turretAngle 
+            }); 
         }
 
-        // FÍSICAS DE DISPARO
         function executeBlast(originX, originY, ownerId, type, shootAngle) {
             swarm.forEach(s => {
                 const dx = s.x - originX; const dy = s.y - originY;
@@ -170,15 +176,13 @@
                 if (dist < 400) {
                     let force = (400 - dist) / 250;
                     if (type === 'directional') {
-                        // Solo empuja si está en un cono frente a la nave
                         let angleDiff = Math.abs(angleToParticle - shootAngle);
-                        if (angleDiff > Math.PI) angleDiff = 2 * Math.PI - angleDiff; // Normalizar
-                        if (angleDiff < Math.PI / 3) { // Cono de 60 grados
+                        if (angleDiff > Math.PI) angleDiff = 2 * Math.PI - angleDiff; 
+                        if (angleDiff < Math.PI / 3) { 
                             s.vx += (dx / dist) * force * 45; s.vy += (dy / dist) * force * 45;
                             s.owner = ownerId; 
                         }
                     } else if (type === 'wave') {
-                        // Onda 360 grados
                         s.vx += (dx / dist) * force * 20; s.vy += (dy / dist) * force * 20;
                         s.owner = ownerId;
                     }
@@ -186,15 +190,17 @@
             });
         }
 
-        function drawShip(x, y, radius, isLocal, angle, name, isBoosting, isCharging) {
+        // Modificamos el render para dibujar Chasis y Torreta por separado
+        function drawShip(x, y, radius, isLocal, bodyAngle, turretAngle, name, isBoosting, isCharging) {
             ctx.save(); ctx.translate(x, y);
             
             ctx.fillStyle = '#fff'; ctx.font = 'bold 20px Orbitron'; ctx.textAlign = 'center';
             ctx.fillText(name, 0, -radius - 30);
 
-            ctx.rotate(angle);
+            // --- ROTACIÓN DEL CHASIS DE LA NAVE ---
+            ctx.save();
+            ctx.rotate(bodyAngle);
 
-            // Fuego Motor (Si acelera o turbo)
             if (isLocal && (keys.w || keys.a || keys.s || keys.d || isBoosting)) {
                 ctx.beginPath();
                 ctx.moveTo(-radius, -radius/2);
@@ -206,7 +212,6 @@
                 ctx.fill(); ctx.shadowBlur = 0;
             }
 
-            // Cuerpo Delta de Combate
             ctx.beginPath();
             ctx.moveTo(radius * 1.5, 0); ctx.lineTo(-radius, radius);
             ctx.lineTo(-radius * 0.3, 0); ctx.lineTo(-radius, -radius);
@@ -214,18 +219,31 @@
             
             const mainColor = isLocal ? '#00f0ff' : '#ff003c';
             ctx.fillStyle = mainColor; ctx.shadowColor = mainColor; ctx.shadowBlur = 20; ctx.fill();
+            ctx.shadowBlur = 0;
+            ctx.restore(); // Restauramos el chasis para no afectar a la torreta
 
-            // Cockpit
-            ctx.beginPath(); ctx.moveTo(radius * 0.5, 0); ctx.lineTo(-radius * 0.1, radius * 0.3); ctx.lineTo(-radius * 0.1, -radius * 0.3);
-            ctx.fillStyle = '#fff'; ctx.shadowBlur = 0; ctx.fill();
+            // --- ROTACIÓN DE LA TORRETA ---
+            ctx.save();
+            ctx.rotate(turretAngle);
 
-            // Efecto Visual de Carga de Onda (Mantiene el clic)
+            // Base de la torreta
+            ctx.beginPath(); ctx.arc(0, 0, radius * 0.5, 0, Math.PI*2);
+            ctx.fillStyle = '#0f172a'; ctx.fill();
+            ctx.lineWidth = 2; ctx.strokeStyle = mainColor; ctx.stroke();
+
+            // Cañón de la torreta (Apunta al frente relativo a la torreta)
+            ctx.beginPath(); ctx.rect(0, -radius*0.15, radius*1.3, radius*0.3);
+            ctx.fillStyle = '#1e293b'; ctx.fill();
+            ctx.stroke();
+
+            // Efecto visual de Carga
             if (isCharging) {
                 ctx.beginPath(); ctx.arc(0, 0, 100 + (Math.random()*10), 0, Math.PI*2);
                 ctx.strokeStyle = '#00f0ff'; ctx.lineWidth = 2; ctx.globalAlpha = 0.5; ctx.stroke(); ctx.globalAlpha = 1.0;
             }
+            ctx.restore(); // Restauramos torreta
 
-            ctx.restore();
+            ctx.restore(); // Restauramos traslación general
         }
 
         function drawMinimap() {
@@ -258,63 +276,70 @@
         function gameLoop() {
             if (isDead) return;
 
-            // FÍSICAS DE MOVIMIENTO (TECLADO)
             let speedLimit = boost.active ? 18 : 8;
             let accel = boost.active ? 1.5 : 0.6;
             let friction = 0.92;
 
-            if (keys.w) player.vy -= accel; if (keys.s) player.vy += accel;
-            if (keys.a) player.vx -= accel; if (keys.d) player.vx += accel;
+            // Obtener el vector de dirección del teclado
+            let moveX = 0; let moveY = 0;
+            if (keys.w) moveY -= 1;
+            if (keys.s) moveY += 1;
+            if (keys.a) moveX -= 1;
+            if (keys.d) moveX += 1;
+
+            // Normalizar movimiento para que la nave apunte a donde se mueve
+            if (moveX !== 0 || moveY !== 0) {
+                let length = Math.hypot(moveX, moveY);
+                moveX /= length; moveY /= length;
+                
+                player.vx += moveX * accel;
+                player.vy += moveY * accel;
+                
+                // Actualizar el ángulo del CHASIS (la nave física)
+                player.bodyAngle = Math.atan2(moveY, moveX);
+            }
             
             player.vx *= friction; player.vy *= friction;
 
-            // Limitar velocidad máxima
             const currentSpeed = Math.hypot(player.vx, player.vy);
             if (currentSpeed > speedLimit) {
                 player.vx = (player.vx / currentSpeed) * speedLimit;
                 player.vy = (player.vy / currentSpeed) * speedLimit;
             }
 
-            // Gestión del Turbo
             if (keys.space && boost.cooldown <= 0 && !boost.active) { boost.active = true; boost.timer = 40; boost.cooldown = boost.maxCooldown; }
             if (boost.active) { boost.timer--; if (boost.timer <= 0) boost.active = false; }
             if (boost.cooldown > 0) boost.cooldown--;
             updateUI();
 
-            // Ángulo con Ratón
-            player.angle = Math.atan2(player.mouseY - player.y, player.mouseX - player.x);
+            // El RATÓN solo controla la TORRETA
+            player.turretAngle = Math.atan2(player.mouseY - player.y, player.mouseX - player.x);
 
-            // Mover
             player.x += player.vx; player.y += player.vy;
             if (player.x < 0) player.x = 0; if (player.x > MAP_SIZE) player.x = MAP_SIZE;
             if (player.y < 0) player.y = 0; if (player.y > MAP_SIZE) player.y = MAP_SIZE;
 
-            // Lógica de Ratón Sostenido (Onda Continua)
             if (isMouseDown) {
                 mouseHeldFrames++;
                 if (mouseHeldFrames > 15) {
-                    executeBlast(player.x, player.y, myId, 'wave', 0); // Emites ondas sin parar
+                    executeBlast(player.x, player.y, myId, 'wave', 0); 
                     if (mouseHeldFrames % 10 === 0) socket.emit('kinetic_blast', { x: player.x, y: player.y });
                 }
             }
 
-            // Render
             ctx.fillStyle = '#010103'; ctx.fillRect(0, 0, width, height);
             ctx.save(); ctx.translate(width / 2, height / 2); ctx.scale(ZOOM, ZOOM); ctx.translate(-player.x, -player.y);
 
-            // Cuadrícula y Límites
             ctx.strokeStyle = 'rgba(0, 240, 255, 0.05)'; ctx.lineWidth = 3; const gridSize = 250;
             ctx.beginPath();
             for(let i = 0; i <= MAP_SIZE; i += gridSize) { ctx.moveTo(i, 0); ctx.lineTo(i, MAP_SIZE); ctx.moveTo(0, i); ctx.lineTo(MAP_SIZE, i); }
             ctx.stroke();
             ctx.strokeStyle = 'rgba(255, 0, 60, 0.8)'; ctx.lineWidth = 15; ctx.strokeRect(0, 0, MAP_SIZE, MAP_SIZE);
 
-            // --- PARTÍCULAS (Atracción Pasiva Constante) ---
             swarm.forEach(s => {
                 s.vx *= 0.97; s.vy *= 0.97; const speed = Math.hypot(s.vx, s.vy);
                 if (speed < 2) s.owner = null;
 
-                // Atracción Automática
                 const pDx = player.x - s.x; const pDy = player.y - s.y; const pDist = Math.hypot(pDx, pDy);
                 if (pDist > 60 && pDist < 700) { s.vx += (pDx / pDist) * 0.8; s.vy += (pDy / pDist) * 0.8; }
                 
@@ -334,7 +359,6 @@
                     }
                 }
 
-                // DIBUJO DE LA PARTÍCULA
                 ctx.save(); ctx.translate(s.x, s.y); ctx.rotate(Math.atan2(s.vy, s.vx));
                 ctx.beginPath();
                 if (speed > LETHAL_SPEED) {
@@ -346,16 +370,14 @@
                 ctx.restore();
             });
 
-            // ENEMIGOS Y JUGADOR
             for (let id in enemies) {
                 let e = enemies[id];
-                const eDist = Math.hypot(e.targetX - e.x, e.targetY - e.y);
-                if (eDist > 2) e.angle = Math.atan2(e.targetY - e.y, e.targetX - e.x); 
                 e.x += (e.targetX - e.x) * 0.3; e.y += (e.targetY - e.y) * 0.3;
-                drawShip(e.x, e.y, 25, false, e.angle, e.username, false, false);
+                // Dibujamos a los enemigos con sus respectivos ángulos de chasis y torreta recibidos por red
+                drawShip(e.x, e.y, 25, false, e.bodyAngle || 0, e.turretAngle || 0, e.username, false, false);
             }
 
-            drawShip(player.x, player.y, player.radius, true, player.angle, tempUser, boost.active, mouseHeldFrames > 15);
+            drawShip(player.x, player.y, player.radius, true, player.bodyAngle, player.turretAngle, tempUser, boost.active, mouseHeldFrames > 15);
 
             ctx.restore(); drawMinimap(); requestAnimationFrame(gameLoop);
         }
